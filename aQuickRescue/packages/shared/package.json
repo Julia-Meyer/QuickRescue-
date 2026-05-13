@@ -1,0 +1,21 @@
+{
+  "name": "@aQuickRescue/shared",
+  "version": "0.1.0",
+  "description": "Shared types and utilities for aQuickRescue",
+  "type": "module",
+  "main": "index.js",
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "echo 'No build needed for shared package'",
+    "test": "echo 'No tests to run'"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "keywords": [
+    "aQuickRescue",
+    "shared",
+    "types",
+    "utilities"
+  ]
+}
+

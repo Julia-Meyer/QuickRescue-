@@ -1,0 +1,39 @@
+{
+  "name": "@aQuickRescue/frontend",
+  "version": "0.1.0",
+  "description": "aQuickRescue - Frontend, Vite + Vanilla JS + SQLite",
+  "type": "module",
+  "main": "src/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:ui": "vitest --ui",
+    "test:e2e": "playwright test",
+    "lint": "eslint src --ext .js",
+    "lint:fix": "eslint src --ext .js --fix",
+    "format": "prettier --write \"src/**/*.{js,json,css,html}\""
+  },
+  "dependencies": {
+    "zustand": "^4.4.0",
+    "better-sqlite3": "^9.2.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0",
+    "@vitest/ui": "^1.0.0",
+    "@playwright/test": "^1.40.0",
+    "eslint": "^8.55.0",
+    "prettier": "^3.2.5",
+    "@vitejs/plugin-basic-ssl": "^1.0.1",
+    "sqlite": "^5.0.0",
+    "sql.js": "^1.8.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
+

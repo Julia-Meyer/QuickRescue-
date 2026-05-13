@@ -1,0 +1,172 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '18'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Frontend Tests
+  frontend-test:
+    runs-on: ubuntu-latest
+    name: Frontend - Lint & Test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Lint frontend
+        run: npm run lint --workspace=packages/frontend
+
+      - name: Run frontend tests
+        run: npm test --workspace=packages/frontend
+
+      - name: Generate coverage
+        run: npm run test:coverage --workspace=packages/frontend
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./packages/frontend/coverage/coverage-final.json
+
+  # Backend Tests
+  backend-test:
+    runs-on: ubuntu-latest
+    name: Backend - Lint & Test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r packages/backend/requirements.txt
+          pip install pytest pytest-cov black flake8
+
+      - name: Lint with Black
+        run: black --check packages/backend/
+
+      - name: Lint with Flake8
+        run: flake8 packages/backend/ --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Run backend tests
+        run: pytest packages/backend/tests/ --cov=packages/backend/app
+
+  # Security Scan
+  security:
+    runs-on: ubuntu-latest
+    name: Security Scan
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: npm audit
+        run: |
+          npm install
+          npm audit --audit-level=moderate || true
+
+      - name: Run Trivy scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Build Frontend
+  build-frontend:
+    runs-on: ubuntu-latest
+    name: Build Frontend
+    needs: frontend-test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build frontend
+        run: npm run build --workspace=packages/frontend
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: frontend-dist
+          path: packages/frontend/dist/
+          retention-days: 1
+
+  # Build Backend Docker Image
+  build-backend:
+    runs-on: ubuntu-latest
+    name: Build Backend Docker
+    needs: backend-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./packages/backend
+          push: false
+          tags: aQuickRescue:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Deploy (Optional)
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    needs: [frontend-test, backend-test, build-frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Deploy frontend to S3
+        run: |
+          echo "Deploying to S3..."
+          # Add your S3 deployment commands here
+
+      - name: Invalidate CloudFront
+        run: |
+          echo "Invalidating CloudFront cache..."
+          # Add your CloudFront invalidation commands here
+
+      - name: Notify deployment
+        run: echo "✅ Deployment complete"
+
