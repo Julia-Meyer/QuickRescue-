@@ -193,147 +193,57 @@ VAL_003 = "Missing required field"
 
 ## 🏥 Sprint 1b: FHIR Integration - HAPI FHIR Server (Week 1b, 32 hours)
 
+### NOTE
+This sprint focuses only on reading data from the HAPI FHIR server. The application will query the FHIR server for the following resources on demand: `Patient`, `MedicationStatement`, `AllergyIntolerance`, `Condition`, and `RelatedPerson`.
+
 ### TASK-3.6: FHIR Patient Resource Integration ⏳
 **Priority**: 🔴 CRITICAL | **Effort**: 8 story points | **Est. Hours**: 7h
 **Assigned**: Backend Lead | **Deadline**: Day 4-5 of Sprint 1
 **FHIR Spec**: https://hapi.fhir.org/baseR4/swagger-ui/?page=Patient
 
 #### Description
-Implement complete FHIR Patient Resource integration with HAPI FHIR Server, including search, retrieval, and creation capabilities.
+Implement read-only integration with the HAPI FHIR server for `Patient` resources used by the app (search and retrieve).
 
 #### Acceptance Criteria
-- [ ] `GET /api/v1/fhir/patients` - Search patients 
-- [ ] `GET /api/v1/fhir/patients/{id}` - Get single patient
-- [ ] `POST /api/v1/fhir/patients` - Create patient
-- [ ] `PUT /api/v1/fhir/patients/{id}` - Update patient
-- [ ] Search by name: `?given=John&family=Doe`
-- [ ] Search by DOB: `?birthdate=1980-01-15`
-- [ ] Search by Email: `?email=john@example.com`
-- [ ] Search by Identifier (MRN): `?identifier=system|value`
-- [ ] Support pagination: `_count`, `_offset`
-- [ ] Map FHIR Patient to internal PatientProfile model
-- [ ] Error handling for 404 (not found), 400 (invalid query)
-- [ ] Response caching with Redis (TTL: 1 hour)
-- [ ] Audit logging for all FHIR Patient operations
-- [ ] Return FHIR Bundle format for searches
-- [ ] Performance: < 2 seconds per search
-
-#### FHIR Search Query Examples
-```bash
-# Search by name
-GET /fhir/Patient?given=John&family=Doe
-
-# Search by date of birth
-GET /fhir/Patient?birthdate=1980-01-15
-
-# Search by identifier (MRN)
-GET /fhir/Patient?identifier=http://hospital.org/mrn|12345
-
-# Combine multiple criteria
-GET /fhir/Patient?family=Smith&birthdate=ge1950-01-01&birthdate=le1990-01-01
-
-# With pagination
-GET /fhir/Patient?family=Johnson&_count=50&_offset=0
-```
+- [ ] `GET /api/v1/fhir/patients` - Search patients (by name, birthdate, identifier)
+- [ ] `GET /api/v1/fhir/patients/{id}` - Retrieve single patient
+- [ ] Support search parameters: given, family, birthdate, identifier, _count, _offset
+- [ ] Return results in FHIR Bundle format (pass-through or normalized)
+- [ ] Validate and sanitize incoming query parameters before forwarding
+- [ ] Cache search and get responses (TTL: 1 hour)
+- [ ] Audit log all patient read operations (who, when, params)
+- [ ] Properly map FHIR `Patient` fields to response model used by frontend
+- [ ] Handle 404 and other FHIR errors with OperationOutcome mapping
 
 #### Files to Modify
-- New: `packages/backend/app/services/fhir_patient.py`
+- New: `packages/backend/app/services/fhir_patient.py` (read client + mappers)
 - Update: `packages/backend/app/main.py` - Add patient endpoints
 - Update: `packages/backend/app/services/cache.py` - Add patient caching
 
-#### Test Cases
-```python
-def test_search_patient_by_name()
-def test_search_patient_by_birthdate()
-def test_search_patient_by_identifier()
-def test_patient_not_found()
-def test_invalid_search_parameters()
-def test_patient_caching()
-def test_audit_logging()
-```
-
 ---
 
-### TASK-3.7: FHIR Medication & MedicationDispense Integration ⏳
+### TASK-3.7: FHIR MedicationStatement Integration ⏳
 **Priority**: 🔴 CRITICAL | **Effort**: 7 story points | **Est. Hours**: 6h
 **Assigned**: Backend Lead | **Deadline**: Day 5-6 of Sprint 1
-**FHIR Spec**: https://hapi.fhir.org/baseR4/swagger-ui/?page=MedicationDispense
+**FHIR Spec**: https://hapi.fhir.org/baseR4/swagger-ui/?page=MedicationStatement
 
 #### Description
-Implement FHIR Medication and MedicationDispense resources for patient medication history and current medications.
+Expose patient medication information via `MedicationStatement` resources from the FHIR server.
 
 #### Acceptance Criteria
-- [ ] `GET /api/v1/fhir/medications?patient=Patient/{id}` - List patient medications
-- [ ] `GET /api/v1/fhir/medications/{id}` - Get single medication
-- [ ] `GET /api/v1/fhir/medication-dispenses?patient=Patient/{id}` - Dispensing history
-- [ ] `GET /api/v1/fhir/medication-dispenses/{id}` - Single dispensing record
-- [ ] Support filters:
-  - [ ] `?status=completed,in-progress,on-hold,cancelled`
-  - [ ] `?effective-time=ge2024-01-01&effective-time=le2024-12-31` (date range)
-  - [ ] `?code=system|code` (SNOMED CT, RxNorm codes)
-- [ ] Extract medication reference and resolve Medication resource
-- [ ] Return dosage information (text, route, dose, frequency)
-- [ ] Parse dose quantity (value + unit)
-- [ ] Extract timing information (twice daily, every 8 hours, etc.)
-- [ ] Cache for 30 minutes
-- [ ] Audit log medication access
-- [ ] Support pagination
-- [ ] Handle missing medications gracefully (reference resolution)
-- [ ] Performance: < 1.5 seconds per request
-
-#### FHIR Medication Response Structure
-```json
-{
-  "id": "med-123",
-  "resourceType": "Medication",
-  "code": {
-    "coding": [{
-      "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
-      "code": "207106",
-      "display": "Ibuprofen 200mg"
-    }]
-  },
-  "strength": {
-    "numerator": {"value": 200, "unit": "mg"},
-    "denominator": {"value": 1, "unit": "tablet"}
-  }
-}
-```
-
-#### FHIR MedicationDispense Response Structure
-```json
-{
-  "id": "md-456",
-  "resourceType": "MedicationDispense",
-  "status": "completed",
-  "medicationReference": {"reference": "Medication/med-123"},
-  "patient": {"reference": "Patient/pat-001"},
-  "dispenseDate": "2024-01-15",
-  "dosageInstruction": [{
-    "text": "Take 1 tablet twice daily",
-    "timing": {"repeat": {"frequency": 2, "period": 1, "periodUnit": "d"}},
-    "route": {"coding": [{"code": "26643006", "display": "Oral"}]},
-    "doseAndRate": [{
-      "doseQuantity": {"value": 1, "unit": "tablet"}
-    }]
-  }]
-}
-```
+- [ ] `GET /api/v1/fhir/medication-statements?patient=Patient/{id}` - List medication statements
+- [ ] `GET /api/v1/fhir/medication-statements/{id}` - Single medication statement
+- [ ] Support filters: status, date range, medication code
+- [ ] Resolve medication references when practical (Medication resource)
+- [ ] Return dosage, status, effective period, and medication display text
+- [ ] Cache responses for 30 minutes
+- [ ] Audit log medication read operations
+- [ ] Performance: < 1.5 seconds per request (typical)
 
 #### Files to Modify
-- New: `packages/backend/app/services/fhir_medication.py`
+- New: `packages/backend/app/services/fhir_medicationstatement.py`
 - Update: `packages/backend/app/main.py` - Add medication endpoints
-- Update: `packages/backend/app/models.py` - Add MedicationCache model
-
-#### Test Cases
-```python
-def test_get_patient_medications()
-def test_medication_dispense_history()
-def test_medication_status_filtering()
-def test_date_range_filtering()
-def test_invalid_patient_id()
-def test_medication_caching()
-```
+- Update: `packages/backend/app/services/cache.py` - Add medication caching
 
 ---
 
@@ -343,93 +253,119 @@ def test_medication_caching()
 **FHIR Spec**: https://hapi.fhir.org/baseR4/swagger-ui/?page=AllergyIntolerance
 
 #### Description
-Implement FHIR AllergyIntolerance resource for patient allergies and adverse reactions with severity levels.
+Expose patient allergy and adverse reaction data via `AllergyIntolerance` resources.
 
 #### Acceptance Criteria
-- [ ] `GET /api/v1/fhir/allergies?patient=Patient/{id}` - List patient allergies
-- [ ] `GET /api/v1/fhir/allergies/{id}` - Get single allergy
-- [ ] Support filters:
-  - [ ] `?clinical-status=active,inactive,resolved`
-  - [ ] `?verification-status=unconfirmed,confirmed,refuted,entered-in-error`
-  - [ ] `?criticality=low,high,unable-to-assess`
-  - [ ] `?category=food,medication,environment,biologic`
-- [ ] Extract allergen code (substance/medication)
-- [ ] Extract reaction manifestations (array of symptoms)
-- [ ] Extract reaction severity (mild, moderate, severe)
-- [ ] Parse onset date and last occurrence date
-- [ ] Support multiple reactions per allergy
-- [ ] Cache for 30 minutes
-- [ ] Audit log allergy access (important for emergency!)
-- [ ] Return empty array if no allergies (not error)
-- [ ] Highlight critical allergies (severity=severe, criticality=high)
+- [ ] `GET /api/v1/fhir/allergies?patient=Patient/{id}` - List allergies
+- [ ] `GET /api/v1/fhir/allergies/{id}` - Single allergy
+- [ ] Support filters: clinical-status, verification-status, criticality, category
+- [ ] Extract allergen code, reaction manifestations, severity, onset/lastOccurrence
+- [ ] Highlight critical allergies for fast access
+- [ ] Cache responses for 30 minutes
+- [ ] Audit log allergy read operations
+- [ ] Return empty array (200) when none found
 - [ ] Performance: < 1 second per request
-- [ ] Include notes/description field
-
-#### FHIR AllergyIntolerance Response Structure
-```json
-{
-  "id": "allergy-001",
-  "resourceType": "AllergyIntolerance",
-  "clinicalStatus": {
-    "coding": [{"system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "code": "active"}]
-  },
-  "verificationStatus": {
-    "coding": [{"system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "code": "confirmed"}]
-  },
-  "category": ["medication"],
-  "criticality": "high",
-  "code": {
-    "coding": [{
-      "system": "http://snomed.info/sct",
-      "code": "2670000",
-      "display": "Penicillin allergy (disorder)"
-    }]
-  },
-  "patient": {"reference": "Patient/pat-001"},
-  "reaction": [{
-    "manifestation": [{
-      "coding": [{
-        "system": "http://snomed.info/sct",
-        "code": "39579001",
-        "display": "Anaphylaxis"
-      }]
-    }],
-    "severity": "severe",
-    "onset": "1990-06-15"
-  }, {
-    "manifestation": [{
-      "coding": [{
-        "system": "http://snomed.info/sct",
-        "code": "271807003",
-        "display": "Rash"
-      }]
-    }],
-    "severity": "moderate"
-  }],
-  "lastOccurrence": "2024-06-15",
-  "note": [{"text": "Patient reports anaphylaxis on last occurrence"}]
-}
-```
 
 #### Files to Modify
-- New: `packages/backend/app/services/fhir_allergy.py`
+- New: `packages/backend/app/services/fhir_allergyintolerance.py`
 - Update: `packages/backend/app/main.py` - Add allergy endpoints
-- Update: `packages/backend/app/models.py` - Add AllergyCache model
-
-#### Test Cases
-```python
-def test_get_patient_allergies()
-def test_allergy_severity_levels()
-def test_critical_allergies_flagging()
-def test_allergy_status_filtering()
-def test_multiple_reactions_per_allergy()
-def test_empty_allergies_response()
-def test_allergy_audit_logging()
-```
+- Update: `packages/backend/app/services/cache.py` - Add allergy caching
 
 ---
 
-### TASK-3.9: Additional FHIR Resources (Observation, Condition, Procedure) ⏳
+### TASK-3.9: FHIR Condition Integration ⏳
+**Priority**: 🔴 CRITICAL | **Effort**: 6 story points | **Est. Hours**: 5h
+**Assigned**: Backend Lead | **Deadline**: Day 6-7 of Sprint 1
+**FHIR Spec**: https://hapi.fhir.org/baseR4/swagger-ui/?page=Condition
+
+#### Description
+Expose patient diagnoses via `Condition` resources from the FHIR server.
+
+#### Acceptance Criteria
+- [ ] `GET /api/v1/fhir/conditions?patient=Patient/{id}` - List conditions
+- [ ] `GET /api/v1/fhir/conditions/{id}` - Single condition
+- [ ] Support filters: clinical-status, verification-status, code, date range
+- [ ] Extract code (ICD/SNOMED), onset, abatement, severity, stage if present
+- [ ] Cache responses for 1 hour
+- [ ] Audit log condition read operations
+- [ ] Performance: < 1.5 seconds per request
+
+#### Files to Modify
+- New: `packages/backend/app/services/fhir_condition.py`
+- Update: `packages/backend/app/main.py` - Add condition endpoints
+- Update: `packages/backend/app/services/cache.py` - Add condition caching
+
+---
+
+### TASK-3.10: FHIR RelatedPerson Integration ⏳
+**Priority**: 🟠 HIGH | **Effort**: 4 story points | **Est. Hours**: 4h
+**Assigned**: Backend Lead | **Deadline**: Day 7 of Sprint 1
+**FHIR Spec**: https://hapi.fhir.org/baseR4/swagger-ui/?page=RelatedPerson
+
+#### Description
+Expose `RelatedPerson` resources to provide emergency contacts and relationships.
+
+#### Acceptance Criteria
+- [ ] `GET /api/v1/fhir/related-persons?patient=Patient/{id}` - List related persons
+- [ ] `GET /api/v1/fhir/related-persons/{id}` - Single related person
+- [ ] Extract name, telecom, relationship coding, and contact details
+- [ ] Cache responses for 1 hour
+- [ ] Audit log related-person read operations
+- [ ] Return empty array (200) when none found
+
+#### Files to Modify
+- New: `packages/backend/app/services/fhir_relatedperson.py`
+- Update: `packages/backend/app/main.py` - Add related person endpoints
+- Update: `packages/backend/app/services/cache.py` - Add related-person caching
+
+---
+
+### TASK-3.11: Emergency Patient Summary Endpoint ⏳
+**Priority**: 🔴 CRITICAL | **Effort**: 5 story points | **Est. Hours**: 4h
+**Assigned**: Backend Lead | **Deadline**: Day 7 of Sprint 1
+
+#### Description
+Create a unified endpoint that returns a fast emergency summary composed only from the approved FHIR resources above (Patient, AllergyIntolerance, MedicationStatement, Condition, RelatedPerson).
+
+#### Acceptance Criteria
+- [ ] `GET /api/v1/fhir/patient-summary/{patient_id}` - Combined summary
+- [ ] Requires authentication + FIRST_RESPONDER or ADMIN role
+- [ ] Calls the FHIR endpoints (parallel) for the five resources above
+- [ ] Cache full summary for 15 minutes
+- [ ] Audit log all summary requests
+- [ ] Performance: < 3 seconds (typical)
+- [ ] Return 404 if patient not found
+
+#### Files to Modify
+- New: `packages/backend/app/services/fhir_summary.py`
+- Update: `packages/backend/app/main.py` - Add summary endpoint
+- Update: `packages/backend/app/services/cache.py` - Add summary caching
+
+---
+
+### TASK-3.12: FHIR Error Handling & Validation ⏳
+**Priority**: 🟡 MEDIUM | **Effort**: 3 story points | **Est. Hours**: 2h
+**Assigned**: Backend Lead | **Deadline**: Day 7 of Sprint 1
+
+#### Description
+Implement FHIR-compliant error handling and input validation for all FHIR resource calls.
+
+#### Acceptance Criteria
+- [ ] Handle FHIR server errors gracefully
+- [ ] Return OperationOutcome resources for FHIR errors
+- [ ] Validate FHIR search parameters before sending to server
+- [ ] Circuit breaker: Fail gracefully if FHIR server is down
+- [ ] Timeout handling (5 second default per FHIR request)
+- [ ] Log all FHIR errors with request details
+
+#### Files to Modify
+- Update: `packages/backend/app/utils/errors.py` - Add FHIR error codes
+- Update: `packages/backend/app/main.py` - Add FHIR error handlers
+- New: `packages/backend/app/services/fhir_client.py` - Base FHIR client with error handling
+
+---
+
+### TASK-3.13: Additional FHIR Resources (Observation, Condition, Procedure) ⏳
 **Priority**: 🟠 HIGH | **Effort**: 8 story points | **Est. Hours**: 8h
 **Assigned**: Backend Lead | **Deadline**: Day 7 of Sprint 1
 **FHIR Specs**:
@@ -528,46 +464,16 @@ def test_caching_by_category()
 **Assigned**: Backend Lead | **Deadline**: Day 7 of Sprint 1
 
 #### Description
-Create a unified endpoint that returns comprehensive patient summary for emergency responders.
+Create a unified endpoint that returns a fast emergency summary composed only from the approved FHIR resources above (Patient, AllergyIntolerance, MedicationStatement, Condition, RelatedPerson).
 
 #### Acceptance Criteria
-- [ ] `GET /api/v1/fhir/patient-summary/{patient_id}` - Complete patient overview
+- [ ] `GET /api/v1/fhir/patient-summary/{patient_id}` - Combined summary
 - [ ] Requires authentication + FIRST_RESPONDER or ADMIN role
-- [ ] Returns comprehensive data structure:
-  ```json
-  {
-    "patient": {...},
-    "active_allergies": [...],
-    "critical_allergies": [...],  // Fast access to high-severity ones
-    "active_medications": [...],
-    "active_conditions": [...],
-    "recent_procedures": [...],
-    "recent_observations": {...},
-    "blood_type": "O+",
-    "emergency_contacts": [...],
-    "summary_generated_at": "2026-05-20T...",
-    "summary_cached": true,
-    "cache_expires_at": "2026-05-20T...",
-    "critical_flags": [
-      "SEVERE_ALLERGY_PENICILLIN",
-      "DIABETES_ACTIVE",
-      "ON_ANTICOAGULANT"
-    ]
-  }
-  ```
-- [ ] Performance: < 3 seconds (includes parallel FHIR calls)
+- [ ] Calls the FHIR endpoints (parallel) for the five resources above
 - [ ] Cache full summary for 15 minutes
-- [ ] Audit log all summary requests (critical for emergency!)
-- [ ] Include critical flags helper
-- [ ] Return 404 if patient not found in FHIR
-
-#### FHIR Parallel Calls
-The endpoint should make parallel requests to:
-1. `/Patient/{id}` - Demographics
-2. `/AllergyIntolerance?patient=Patient/{id}&clinical-status=active`
-3. `/MedicationDispense?patient=Patient/{id}&status=completed,in-progress`
-4. `/Condition?patient=Patient/{id}&clinical-status=active`
-5. `/Procedure?patient=Patient/{id}&date=ge2024-01-01`
+- [ ] Audit log all summary requests
+- [ ] Performance: < 3 seconds (typical)
+- [ ] Return 404 if patient not found
 
 #### Files to Modify
 - New: `packages/backend/app/services/fhir_summary.py`
@@ -592,36 +498,15 @@ def test_unauthorized_access()
 **Assigned**: Backend Lead | **Deadline**: Day 7 of Sprint 1
 
 #### Description
-Implement FHIR-compliant error handling and input validation.
+Implement FHIR-compliant error handling and input validation for all FHIR resource calls.
 
 #### Acceptance Criteria
 - [ ] Handle FHIR server errors gracefully
 - [ ] Return OperationOutcome resources for FHIR errors
-- [ ] Map HTTP status codes to FHIR codes
 - [ ] Validate FHIR search parameters before sending to server
-- [ ] Reject invalid codes/systems with descriptive errors
-- [ ] Log all FHIR errors with request details
 - [ ] Circuit breaker: Fail gracefully if FHIR server is down
-- [ ] Return meaningful error messages (no stack traces)
 - [ ] Timeout handling (5 second default per FHIR request)
-
-#### FHIR OperationOutcome Error Response
-```json
-{
-  "resourceType": "OperationOutcome",
-  "issue": [{
-    "severity": "error",
-    "code": "not-found",
-    "diagnostics": "Patient with ID 'invalid-id' not found in FHIR server",
-    "details": {
-      "coding": [{
-        "system": "http://hl7.org/fhir/operation-outcome",
-        "code": "MSG_NO_MATCH"
-      }]
-    }
-  }]
-}
-```
+- [ ] Log all FHIR errors with request details
 
 #### Files to Modify
 - Update: `packages/backend/app/utils/errors.py` - Add FHIR error codes
