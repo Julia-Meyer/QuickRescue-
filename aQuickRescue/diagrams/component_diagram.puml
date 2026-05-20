@@ -1,0 +1,48 @@
+@startuml Component Diagram
+title QuickRescue Component Diagram
+
+package "Mobile Application Layer" {
+  [React Native App] as App
+  [Auth Service] as AuthApp
+  [Patient Search UI] as SearchUI
+  [Emergency Access UI] as EmergencyUI
+}
+
+package "API Gateway Layer" {
+  [API Gateway] as GW
+  [Rate Limiting] as RateLimit
+  [Auth Middleware] as AuthMW
+}
+
+package "Backend Services Layer" {
+  [Auth Service] as AuthBE
+  [Patient Service] as PatientSvc
+  [Emergency Access Service] as EmergencySvc
+  [Audit Service] as AuditSvc
+  [FHIR Client] as FHIRClient
+}
+
+package "Data Layer" {
+  database "PostgreSQL" as PG
+  database "Redis Cache" as Redis
+  database "FHIR Server" as FHIR
+  database "Audit Log DB" as AuditDB
+}
+
+App --> GW : HTTPS + OAuth2 JWT
+GW --> AuthBE : Auth requests
+GW --> PatientSvc : Patient operations
+GW --> EmergencySvc : Emergency access
+GW --> AuditSvc : Audit logging
+
+AuthBE --> PG : User data
+PatientSvc --> FHIR : Patient data
+EmergencySvc --> FHIR : Emergency data
+EmergencySvc --> AuditDB : Log events
+PatientSvc --> Redis : Cache
+AuditSvc --> AuditDB : Audit logs
+
+AuthApp --> AuthBE
+SearchUI --> PatientSvc
+EmergencyUI --> EmergencySvc
+@enduml

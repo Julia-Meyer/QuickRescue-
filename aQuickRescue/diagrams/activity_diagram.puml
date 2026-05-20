@@ -1,0 +1,35 @@
+@startuml Activity Diagram - Emergency Access
+title Emergency Access Activity Diagram
+
+start
+:First Responder opens app;
+:Authenticates (if not already);
+if (Authenticated?) then (yes)
+  :Clicks "Search Patient";
+  :Inputs Patient Name + DOB;
+  :System searches FHIR server;
+  if (Patient found?) then (yes)
+    :Displays patient summary;
+    :Clicks "View Emergency Data";
+    :Enters access reason;
+    :System validates permissions;
+    if (Emergency access enabled?) then (yes)
+      :Logs FHIR AuditEvent;
+      :Retrieves allergies, medications, contacts;
+      :Returns emergency data;
+      :Notifies patient (optional);
+      stop
+    else (no)
+      :Denies access;
+      :Logs denial;
+      stop
+    endif
+  else (no)
+    :No patient found;
+    stop
+  endif
+else (no)
+  :Prompt login;
+  stop
+endif
+@enduml
