@@ -4,36 +4,34 @@
 
 ---
 
-## 🎯 Sprint 1: Backend Fundamentals (Week 1, 34 hours)
+## 🎯 Sprint 1: Backend Fundamentals (Week 1, 28 hours)
 
-### TASK-3.1: User Registration Endpoint ⏳
-**Priority**: 🔴 CRITICAL | **Effort**: 5 story points | **Est. Hours**: 4h
+### TASK-3.1: User Login Endpoint ⏳
+**Priority**: 🔴 CRITICAL | **Effort**: 3 story points | **Est. Hours**: 2h
 **Assigned**: Backend Lead | **Deadline**: End of Sprint 1
 
 #### Description
-Implement user self-registration with validation, CAPTCHA protection, and rate limiting.
+Implement simple user login with personal user ID and PIN.
 
 #### Acceptance Criteria
-- [ ] `POST /api/v1/auth/register` endpoint created
-- [ ] Email format validation (use EmailStr from Pydantic)
-- [ ] Password strength validation (8+ chars, uppercase, lowercase, number, special)
-- [ ] Username uniqueness check (case-insensitive)
-- [ ] Default role set to `PATIENT`
-- [ ] Hashed password stored (bcrypt)
-- [ ] Rate limiting: max 5 registration attempts per hour per IP
-- [ ] Registration event logged to audit trail
-- [ ] Return 201 Created with user object (no password)
-- [ ] Response includes user ID and temporary 2FA code
+- [ ] `POST /api/v1/auth/login` endpoint created
+- [ ] Accept user_id and pin
+- [ ] Validate against existing users
+- [ ] Return JWT access token and refresh token
+- [ ] Access token valid for 15 minutes (configurable)
+- [ ] Refresh token valid for 30 days (configurable)
+- [ ] Login event logged to audit trail
+- [ ] Return 200 with tokens on success
 
 #### Files to Modify
-- `packages/backend/app/main.py` - Add endpoint
+- `packages/backend/app/main.py` - Add login endpoint
 - `packages/backend/requirements.txt` - Add dependencies if needed
 
 #### Speckit Requirements
 - [x] Input validation
 - [x] Error handling
 - [x] Audit logging
-- [x] Security (rate limiting, bcrypt)
+- [x] Security (JWT)
 
 #### Definition of Done
 - Code reviewed and approved
@@ -109,84 +107,9 @@ Enhance patient search with pagination, fuzzy matching, and result caching.
 
 ---
 
-### TASK-3.4: Image Upload & Storage ⏳
-**Priority**: 🟠 HIGH | **Effort**: 10 story points | **Est. Hours**: 8h
-**Assigned**: Backend Lead | **Deadline**: Day 4-5 of Sprint 1
-
-#### Description
-Implement secure file upload to S3 with metadata storage and thumbnail generation.
-
-#### Acceptance Criteria
-- [ ] `POST /api/v1/patients/{id}/documents` endpoint created
-- [ ] Accept multipart/form-data
-- [ ] Validate file types (PDF, JPEG, PNG only)
-- [ ] Max file size: 10MB
-- [ ] Generate thumbnail (150x150px for images)
-- [ ] Store in S3 with unique key (UUID + extension)
-- [ ] Store metadata in SQLite
-- [ ] Generate presigned URLs (24-hour expiry)
-- [ ] Audit log all uploads
-- [ ] Virus scan before storage
-- [ ] Return file metadata (id, size, type, uploaded_at)
-- [ ] Support batch uploads (max 5 files)
-
-#### Files to Modify
-- `packages/backend/app/main.py` - Add upload endpoint
-- New: `packages/backend/app/services/storage.py`
-- `packages/backend/requirements.txt` - Add boto3, pillow, python-magic
-
-#### S3 Configuration
-```python
-S3_BUCKET = "aQuickRescue-documents"
-S3_REGION = "eu-central-1"
-UPLOAD_LIMIT_MB = 10
-THUMBNAIL_SIZE = (150, 150)
-```
-
----
-
-### TASK-3.5: Patient Profile Management ⏳
-**Priority**: 🟡 MEDIUM | **Effort**: 5 story points | **Est. Hours**: 4h
-**Assigned**: Backend Lead | **Deadline**: Day 5 of Sprint 1
-
-#### Description
-Add CRUD endpoints for patient profile management.
-
-#### Acceptance Criteria
-- [ ] `GET /api/v1/patients/{id}` - Retrieve patient profile
-- [ ] `PUT /api/v1/patients/{id}` - Update patient profile
-- [ ] `DELETE /api/v1/patients/{id}` - Soft delete patient
-- [ ] Verify user owns profile (authorization)
-- [ ] Update emergency_access_enabled flag
-- [ ] Add emergency_contact_name and phone fields
-- [ ] Soft deletes (add deleted_at column)
-- [ ] All updates logged to audit trail
-- [ ] Return 404 if patient not found
-- [ ] Return 403 if unauthorized
-- [ ] Validate email format in updates
-
-#### Files to Modify
-- `packages/backend/app/main.py` - Add new endpoints
-- Database models - Add deleted_at column
-
-#### Tests
-```bash
-# Get patient
-GET /api/v1/patients/123 (requires PATIENT role + ownership OR ADMIN)
-
-# Update patient
-PUT /api/v1/patients/123
-{"emergency_contact_name": "John Doe", "emergency_contact_phone": "+..."}
-
-# Soft delete
-DELETE /api/v1/patients/123 (marks as deleted, soft delete)
-```
-
----
-
-### TASK-3.6: FHIR Resource Caching ⏳
+### TASK-3.4: FHIR Resource Caching ⏳
 **Priority**: 🟡 MEDIUM | **Effort**: 6 story points | **Est. Hours**: 5h
-**Assigned**: Backend Lead | **Deadline**: Day 6 of Sprint 1
+**Assigned**: Backend Lead | **Deadline**: Day 4 of Sprint 1
 
 #### Description
 Implement Redis caching for FHIR server responses.
@@ -217,9 +140,9 @@ CACHE_TTL_MEDICATIONS = 1800  # 30 minutes
 
 ---
 
-### TASK-3.7: Error Handling & Global Validation ⏳
+### TASK-3.5: Error Handling & Global Validation ⏳
 **Priority**: 🔴 CRITICAL | **Effort**: 5 story points | **Est. Hours**: 4h
-**Assigned**: Backend Lead | **Deadline**: Day 7 of Sprint 1
+**Assigned**: Backend Lead | **Deadline**: Day 5 of Sprint 1
 
 #### Description
 Implement standardized error responses and input validation middleware.
@@ -713,11 +636,11 @@ Prepare and execute v1.0.0 release.
 
 | Sprint | Phase | Tasks | Hours | Priority |
 |--------|-------|-------|-------|----------|
-| 1 | Backend | 7 | 34 | HIGH |
+| 1 | Backend | 5 | 28 | HIGH |
 | 2 | Testing | 6 | 52 | HIGH |
 | 3 | DevOps | 7 | 28 | HIGH |
 | 4 | Security | 6 | 33 | HIGH |
-| **Total** | **All** | **26** | **147** | - |
+| **Total** | **All** | **24** | **141** | - |
 
 ---
 

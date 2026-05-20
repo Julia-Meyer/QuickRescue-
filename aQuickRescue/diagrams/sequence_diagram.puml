@@ -1,0 +1,33 @@
+@startuml Sequence Diagram - Emergency Access
+title Emergency Access Sequence Diagram
+
+actor "First Responder" as FR
+participant "Mobile App" as App
+participant "API Gateway" as GW
+participant "Backend" as BE
+participant "FHIR Server" as FHIR
+participant "Audit DB" as Audit
+participant "Patient Device" as Patient
+
+FR -> App: Click "Search Patient"
+App -> GW: POST /api/v1/patients/search
+GW -> BE: Forward request
+BE -> FHIR: Search Patient by name/DOB
+FHIR --> BE: Patient data
+BE --> GW: Patient summary
+GW --> App: Patient found
+App --> FR: Display patient
+
+FR -> App: Click "View Emergency Data"
+App -> GW: POST /api/v1/emergency/access
+GW -> BE: Validate role & emergency enabled
+BE -> FHIR: Get allergies, medications, contacts
+FHIR --> BE: Emergency data
+BE -> Audit: Log AuditEvent
+Audit --> BE: Logged
+BE --> GW: Emergency data
+GW --> App: Data returned
+App --> FR: Display data
+
+BE -> Patient: Push notification (optional)
+@enduml

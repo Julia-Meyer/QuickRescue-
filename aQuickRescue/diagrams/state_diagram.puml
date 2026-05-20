@@ -1,0 +1,16 @@
+@startuml State Diagram - Emergency Access
+title Emergency Access State Diagram
+
+[*] --> Disabled
+Disabled --> Enabled : Patient enables
+Enabled --> Requested : Responder requests access
+Requested --> Granted : System validates & logs
+Granted --> Completed : Data accessed
+Completed --> [*]
+
+Requested --> Denied : Access denied
+Denied --> [*]
+
+Granted --> Revoked : Patient revokes
+Revoked --> [*]
+@enduml

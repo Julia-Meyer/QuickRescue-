@@ -1,0 +1,80 @@
+@startuml Class Diagram
+title QuickRescue Class Diagram
+
+class User {
+  +id: UUID
+  +user_id: string
+  +pin: string (hashed)
+  +role: Role
+  +created_at: datetime
+  +updated_at: datetime
+  --
+  +login(user_id, pin): JWT
+  +refresh_token(): JWT
+}
+
+enum Role {
+  PATIENT
+  FIRST_RESPONDER
+  EMERGENCY_PHYSICIAN
+  ADMIN
+}
+
+class Patient {
+  +id: UUID
+  +name: HumanName
+  +birthDate: date
+  +telecom: ContactPoint[]
+  +emergency_contact: ContactPoint
+  +emergency_access_enabled: boolean
+  --
+  +enable_emergency_access(): void
+  +get_emergency_data(): EmergencyData
+}
+
+class AllergyIntolerance {
+  +id: UUID
+  +patient: Patient
+  +code: CodeableConcept
+  +criticality: string
+  +reaction: Reaction[]
+}
+
+class MedicationStatement {
+  +id: UUID
+  +patient: Patient
+  +medication: CodeableConcept
+  +dosage: Dosage
+  +status: string
+}
+
+class AuditEvent {
+  +id: UUID
+  +type: Coding
+  +action: string
+  +recorded: datetime
+  +outcome: string
+  +agent: Agent[]
+  +entity: Entity[]
+  --
+  +log_access(): void
+}
+
+class EmergencyAccess {
+  +id: UUID
+  +patient: Patient
+  +requester: User
+  +reason: string
+  +timestamp: datetime
+  +data_accessed: string[]
+  --
+  +grant_access(): boolean
+  +log_event(): AuditEvent
+}
+
+User ||--o{ Patient : manages
+Patient ||--o{ AllergyIntolerance : has
+Patient ||--o{ MedicationStatement : has
+EmergencyAccess ||--|| AuditEvent : generates
+User ||--o{ EmergencyAccess : requests
+@enduml

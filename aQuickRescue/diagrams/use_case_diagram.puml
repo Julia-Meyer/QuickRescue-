@@ -1,0 +1,39 @@
+@startuml Use Case Diagram
+title QuickRescue Use Case Diagram
+
+actor Patient
+actor "First Responder" as FR
+actor "Emergency Physician" as EP
+actor Admin
+
+rectangle "QuickRescue System" {
+  usecase "Login" as UC1
+  usecase "View Own Health Data" as UC2
+  usecase "Enable Emergency Access" as UC3
+  usecase "Search Patients" as UC4
+  usecase "Access Emergency Data" as UC5
+  usecase "Review Audit Trail" as UC6
+  usecase "Manage Users" as UC7
+  usecase "View System Audit" as UC8
+}
+
+Patient --> UC1
+Patient --> UC2
+Patient --> UC3
+Patient --> UC6
+
+FR --> UC1
+FR --> UC4
+FR --> UC5
+
+EP --> UC1
+EP --> UC4
+EP --> UC5
+
+Admin --> UC1
+Admin --> UC7
+Admin --> UC8
+
+UC4 ..> UC5 : <<extends>>
+UC5 ..> UC6 : <<includes>>
+@enduml
