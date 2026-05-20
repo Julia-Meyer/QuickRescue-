@@ -191,6 +191,454 @@ VAL_003 = "Missing required field"
 
 ---
 
+## 🏥 Sprint 1b: FHIR Integration - HAPI FHIR Server (Week 1b, 32 hours)
+
+### TASK-3.6: FHIR Patient Resource Integration ⏳
+**Priority**: 🔴 CRITICAL | **Effort**: 8 story points | **Est. Hours**: 7h
+**Assigned**: Backend Lead | **Deadline**: Day 4-5 of Sprint 1
+**FHIR Spec**: https://hapi.fhir.org/baseR4/swagger-ui/?page=Patient
+
+#### Description
+Implement complete FHIR Patient Resource integration with HAPI FHIR Server, including search, retrieval, and creation capabilities.
+
+#### Acceptance Criteria
+- [ ] `GET /api/v1/fhir/patients` - Search patients 
+- [ ] `GET /api/v1/fhir/patients/{id}` - Get single patient
+- [ ] `POST /api/v1/fhir/patients` - Create patient
+- [ ] `PUT /api/v1/fhir/patients/{id}` - Update patient
+- [ ] Search by name: `?given=John&family=Doe`
+- [ ] Search by DOB: `?birthdate=1980-01-15`
+- [ ] Search by Email: `?email=john@example.com`
+- [ ] Search by Identifier (MRN): `?identifier=system|value`
+- [ ] Support pagination: `_count`, `_offset`
+- [ ] Map FHIR Patient to internal PatientProfile model
+- [ ] Error handling for 404 (not found), 400 (invalid query)
+- [ ] Response caching with Redis (TTL: 1 hour)
+- [ ] Audit logging for all FHIR Patient operations
+- [ ] Return FHIR Bundle format for searches
+- [ ] Performance: < 2 seconds per search
+
+#### FHIR Search Query Examples
+```bash
+# Search by name
+GET /fhir/Patient?given=John&family=Doe
+
+# Search by date of birth
+GET /fhir/Patient?birthdate=1980-01-15
+
+# Search by identifier (MRN)
+GET /fhir/Patient?identifier=http://hospital.org/mrn|12345
+
+# Combine multiple criteria
+GET /fhir/Patient?family=Smith&birthdate=ge1950-01-01&birthdate=le1990-01-01
+
+# With pagination
+GET /fhir/Patient?family=Johnson&_count=50&_offset=0
+```
+
+#### Files to Modify
+- New: `packages/backend/app/services/fhir_patient.py`
+- Update: `packages/backend/app/main.py` - Add patient endpoints
+- Update: `packages/backend/app/services/cache.py` - Add patient caching
+
+#### Test Cases
+```python
+def test_search_patient_by_name()
+def test_search_patient_by_birthdate()
+def test_search_patient_by_identifier()
+def test_patient_not_found()
+def test_invalid_search_parameters()
+def test_patient_caching()
+def test_audit_logging()
+```
+
+---
+
+### TASK-3.7: FHIR Medication & MedicationDispense Integration ⏳
+**Priority**: 🔴 CRITICAL | **Effort**: 7 story points | **Est. Hours**: 6h
+**Assigned**: Backend Lead | **Deadline**: Day 5-6 of Sprint 1
+**FHIR Spec**: https://hapi.fhir.org/baseR4/swagger-ui/?page=MedicationDispense
+
+#### Description
+Implement FHIR Medication and MedicationDispense resources for patient medication history and current medications.
+
+#### Acceptance Criteria
+- [ ] `GET /api/v1/fhir/medications?patient=Patient/{id}` - List patient medications
+- [ ] `GET /api/v1/fhir/medications/{id}` - Get single medication
+- [ ] `GET /api/v1/fhir/medication-dispenses?patient=Patient/{id}` - Dispensing history
+- [ ] `GET /api/v1/fhir/medication-dispenses/{id}` - Single dispensing record
+- [ ] Support filters:
+  - [ ] `?status=completed,in-progress,on-hold,cancelled`
+  - [ ] `?effective-time=ge2024-01-01&effective-time=le2024-12-31` (date range)
+  - [ ] `?code=system|code` (SNOMED CT, RxNorm codes)
+- [ ] Extract medication reference and resolve Medication resource
+- [ ] Return dosage information (text, route, dose, frequency)
+- [ ] Parse dose quantity (value + unit)
+- [ ] Extract timing information (twice daily, every 8 hours, etc.)
+- [ ] Cache for 30 minutes
+- [ ] Audit log medication access
+- [ ] Support pagination
+- [ ] Handle missing medications gracefully (reference resolution)
+- [ ] Performance: < 1.5 seconds per request
+
+#### FHIR Medication Response Structure
+```json
+{
+  "id": "med-123",
+  "resourceType": "Medication",
+  "code": {
+    "coding": [{
+      "system": "http://www.nlm.nih.gov/research/umls/rxnorm",
+      "code": "207106",
+      "display": "Ibuprofen 200mg"
+    }]
+  },
+  "strength": {
+    "numerator": {"value": 200, "unit": "mg"},
+    "denominator": {"value": 1, "unit": "tablet"}
+  }
+}
+```
+
+#### FHIR MedicationDispense Response Structure
+```json
+{
+  "id": "md-456",
+  "resourceType": "MedicationDispense",
+  "status": "completed",
+  "medicationReference": {"reference": "Medication/med-123"},
+  "patient": {"reference": "Patient/pat-001"},
+  "dispenseDate": "2024-01-15",
+  "dosageInstruction": [{
+    "text": "Take 1 tablet twice daily",
+    "timing": {"repeat": {"frequency": 2, "period": 1, "periodUnit": "d"}},
+    "route": {"coding": [{"code": "26643006", "display": "Oral"}]},
+    "doseAndRate": [{
+      "doseQuantity": {"value": 1, "unit": "tablet"}
+    }]
+  }]
+}
+```
+
+#### Files to Modify
+- New: `packages/backend/app/services/fhir_medication.py`
+- Update: `packages/backend/app/main.py` - Add medication endpoints
+- Update: `packages/backend/app/models.py` - Add MedicationCache model
+
+#### Test Cases
+```python
+def test_get_patient_medications()
+def test_medication_dispense_history()
+def test_medication_status_filtering()
+def test_date_range_filtering()
+def test_invalid_patient_id()
+def test_medication_caching()
+```
+
+---
+
+### TASK-3.8: FHIR AllergyIntolerance Integration ⏳
+**Priority**: 🔴 CRITICAL | **Effort**: 6 story points | **Est. Hours**: 5h
+**Assigned**: Backend Lead | **Deadline**: Day 6 of Sprint 1
+**FHIR Spec**: https://hapi.fhir.org/baseR4/swagger-ui/?page=AllergyIntolerance
+
+#### Description
+Implement FHIR AllergyIntolerance resource for patient allergies and adverse reactions with severity levels.
+
+#### Acceptance Criteria
+- [ ] `GET /api/v1/fhir/allergies?patient=Patient/{id}` - List patient allergies
+- [ ] `GET /api/v1/fhir/allergies/{id}` - Get single allergy
+- [ ] Support filters:
+  - [ ] `?clinical-status=active,inactive,resolved`
+  - [ ] `?verification-status=unconfirmed,confirmed,refuted,entered-in-error`
+  - [ ] `?criticality=low,high,unable-to-assess`
+  - [ ] `?category=food,medication,environment,biologic`
+- [ ] Extract allergen code (substance/medication)
+- [ ] Extract reaction manifestations (array of symptoms)
+- [ ] Extract reaction severity (mild, moderate, severe)
+- [ ] Parse onset date and last occurrence date
+- [ ] Support multiple reactions per allergy
+- [ ] Cache for 30 minutes
+- [ ] Audit log allergy access (important for emergency!)
+- [ ] Return empty array if no allergies (not error)
+- [ ] Highlight critical allergies (severity=severe, criticality=high)
+- [ ] Performance: < 1 second per request
+- [ ] Include notes/description field
+
+#### FHIR AllergyIntolerance Response Structure
+```json
+{
+  "id": "allergy-001",
+  "resourceType": "AllergyIntolerance",
+  "clinicalStatus": {
+    "coding": [{"system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-clinical", "code": "active"}]
+  },
+  "verificationStatus": {
+    "coding": [{"system": "http://terminology.hl7.org/CodeSystem/allergyintolerance-verification", "code": "confirmed"}]
+  },
+  "category": ["medication"],
+  "criticality": "high",
+  "code": {
+    "coding": [{
+      "system": "http://snomed.info/sct",
+      "code": "2670000",
+      "display": "Penicillin allergy (disorder)"
+    }]
+  },
+  "patient": {"reference": "Patient/pat-001"},
+  "reaction": [{
+    "manifestation": [{
+      "coding": [{
+        "system": "http://snomed.info/sct",
+        "code": "39579001",
+        "display": "Anaphylaxis"
+      }]
+    }],
+    "severity": "severe",
+    "onset": "1990-06-15"
+  }, {
+    "manifestation": [{
+      "coding": [{
+        "system": "http://snomed.info/sct",
+        "code": "271807003",
+        "display": "Rash"
+      }]
+    }],
+    "severity": "moderate"
+  }],
+  "lastOccurrence": "2024-06-15",
+  "note": [{"text": "Patient reports anaphylaxis on last occurrence"}]
+}
+```
+
+#### Files to Modify
+- New: `packages/backend/app/services/fhir_allergy.py`
+- Update: `packages/backend/app/main.py` - Add allergy endpoints
+- Update: `packages/backend/app/models.py` - Add AllergyCache model
+
+#### Test Cases
+```python
+def test_get_patient_allergies()
+def test_allergy_severity_levels()
+def test_critical_allergies_flagging()
+def test_allergy_status_filtering()
+def test_multiple_reactions_per_allergy()
+def test_empty_allergies_response()
+def test_allergy_audit_logging()
+```
+
+---
+
+### TASK-3.9: Additional FHIR Resources (Observation, Condition, Procedure) ⏳
+**Priority**: 🟠 HIGH | **Effort**: 8 story points | **Est. Hours**: 8h
+**Assigned**: Backend Lead | **Deadline**: Day 7 of Sprint 1
+**FHIR Specs**:
+- Observation: https://hapi.fhir.org/baseR4/swagger-ui/?page=Observation
+- Condition: https://hapi.fhir.org/baseR4/swagger-ui/?page=Condition
+- Procedure: https://hapi.fhir.org/baseR4/swagger-ui/?page=Procedure
+
+#### Description
+Implement additional critical FHIR resources for comprehensive patient medical history.
+
+#### A. FHIR Observation (Vital Signs, Lab Results)
+Acceptance Criteria:
+- [ ] `GET /api/v1/fhir/observations?patient=Patient/{id}` - Lab/vital signs
+- [ ] `GET /api/v1/fhir/observations/{id}` - Single observation
+- [ ] Support filters:
+  - [ ] `?status=final,preliminary,amended,cancelled`
+  - [ ] `?code=system|code` (LOINC codes: 8480-6 for BP, 3141-9 for weight)
+  - [ ] `?date=ge2024-01-01&date=le2024-12-31` (date range)
+  - [ ] `?category=vital-signs,laboratory,imaging,social-history`
+- [ ] Extract value (numeric, coded, or text)
+- [ ] Extract reference range (low/high)
+- [ ] Parse result interpretation (high, low, normal, critical)
+- [ ] Cache vital signs (15 minutes), labs (1 hour), imaging (4 hours)
+- [ ] Include units of measurement
+- [ ] Support component observations (BP with systolic/diastolic)
+
+#### B. FHIR Condition (Diagnoses)
+Acceptance Criteria:
+- [ ] `GET /api/v1/fhir/conditions?patient=Patient/{id}` - Patient diagnoses
+- [ ] `GET /api/v1/fhir/conditions/{id}` - Single condition
+- [ ] Support filters:
+  - [ ] `?clinical-status=active,recurrence,remission,inactive`
+  - [ ] `?code=system|code` (ICD-10, SNOMED codes)
+  - [ ] `?verification-status=unconfirmed,confirmed,refuted,entered-in-error`
+- [ ] Extract ICD-10/SNOMED codes
+- [ ] Extract onset date
+- [ ] Extract abatement date (for resolved conditions)
+- [ ] Parse severity (mild, moderate, severe)
+- [ ] Extract stage information if available
+- [ ] Cache for 1 hour
+
+#### C. FHIR Procedure (Medical Procedures)
+Acceptance Criteria:
+- [ ] `GET /api/v1/fhir/procedures?patient=Patient/{id}` - Procedures
+- [ ] `GET /api/v1/fhir/procedures/{id}` - Single procedure
+- [ ] Support filters:
+  - [ ] `?status=preparation,in-progress,completed,cancelled,entered-in-error`
+  - [ ] `?code=system|code` (SNOMED codes)
+  - [ ] `?date=ge2024-01-01&date=le2024-12-31` (date range)
+- [ ] Extract procedure code/display
+- [ ] Extract performer (surgeon, nurse, etc.)
+- [ ] Extract location information
+- [ ] Extract outcome information
+- [ ] Cache for 1 hour
+- [ ] Include complication flags if present
+
+#### API Structure
+```
+Backend-Endpoints:
+  GET  /api/v1/fhir/observations            (List vital signs + labs)
+  GET  /api/v1/fhir/observations/{id}       (Get single observation)
+  GET  /api/v1/fhir/conditions              (List active diagnoses)
+  GET  /api/v1/fhir/conditions/{id}         (Get single condition)
+  GET  /api/v1/fhir/procedures              (List procedures with dates)
+  GET  /api/v1/fhir/procedures/{id}         (Get single procedure)
+
+HAPI FHIR Endpoints (internal):
+  GET  BASE_URL/Observation?patient=...&category=...&date=...
+  GET  BASE_URL/Condition?patient=...&clinical-status=...
+  GET  BASE_URL/Procedure?patient=...&date=...
+```
+
+#### Files to Modify
+- New: `packages/backend/app/services/fhir_observation.py`
+- New: `packages/backend/app/services/fhir_condition.py`
+- New: `packages/backend/app/services/fhir_procedure.py`
+- Update: `packages/backend/app/main.py` - Add all endpoints
+- Update: `packages/backend/app/models.py` - Add cache models
+
+#### Test Cases
+```python
+def test_get_vital_signs()
+def test_get_lab_results()
+def test_observation_date_range()
+def test_get_active_conditions()
+def test_condition_severity()
+def test_get_recent_procedures()
+def test_procedure_date_filtering()
+def test_caching_by_category()
+```
+
+---
+
+### TASK-3.10: Emergency Patient Summary Endpoint ⏳
+**Priority**: 🔴 CRITICAL | **Effort**: 5 story points | **Est. Hours**: 4h
+**Assigned**: Backend Lead | **Deadline**: Day 7 of Sprint 1
+
+#### Description
+Create a unified endpoint that returns comprehensive patient summary for emergency responders.
+
+#### Acceptance Criteria
+- [ ] `GET /api/v1/fhir/patient-summary/{patient_id}` - Complete patient overview
+- [ ] Requires authentication + FIRST_RESPONDER or ADMIN role
+- [ ] Returns comprehensive data structure:
+  ```json
+  {
+    "patient": {...},
+    "active_allergies": [...],
+    "critical_allergies": [...],  // Fast access to high-severity ones
+    "active_medications": [...],
+    "active_conditions": [...],
+    "recent_procedures": [...],
+    "recent_observations": {...},
+    "blood_type": "O+",
+    "emergency_contacts": [...],
+    "summary_generated_at": "2026-05-20T...",
+    "summary_cached": true,
+    "cache_expires_at": "2026-05-20T...",
+    "critical_flags": [
+      "SEVERE_ALLERGY_PENICILLIN",
+      "DIABETES_ACTIVE",
+      "ON_ANTICOAGULANT"
+    ]
+  }
+  ```
+- [ ] Performance: < 3 seconds (includes parallel FHIR calls)
+- [ ] Cache full summary for 15 minutes
+- [ ] Audit log all summary requests (critical for emergency!)
+- [ ] Include critical flags helper
+- [ ] Return 404 if patient not found in FHIR
+
+#### FHIR Parallel Calls
+The endpoint should make parallel requests to:
+1. `/Patient/{id}` - Demographics
+2. `/AllergyIntolerance?patient=Patient/{id}&clinical-status=active`
+3. `/MedicationDispense?patient=Patient/{id}&status=completed,in-progress`
+4. `/Condition?patient=Patient/{id}&clinical-status=active`
+5. `/Procedure?patient=Patient/{id}&date=ge2024-01-01`
+
+#### Files to Modify
+- New: `packages/backend/app/services/fhir_summary.py`
+- Update: `packages/backend/app/main.py` - Add summary endpoint
+- Update: `packages/backend/app/services/cache.py` - Add summary caching
+
+#### Test Cases
+```python
+def test_patient_summary_complete()
+def test_patient_summary_performance()
+def test_critical_flags_detection()
+def test_summary_caching()
+def test_summary_audit_logging()
+def test_patient_not_found()
+def test_unauthorized_access()
+```
+
+---
+
+### TASK-3.11: FHIR Error Handling & Validation ⏳
+**Priority**: 🟡 MEDIUM | **Effort**: 3 story points | **Est. Hours**: 2h
+**Assigned**: Backend Lead | **Deadline**: Day 7 of Sprint 1
+
+#### Description
+Implement FHIR-compliant error handling and input validation.
+
+#### Acceptance Criteria
+- [ ] Handle FHIR server errors gracefully
+- [ ] Return OperationOutcome resources for FHIR errors
+- [ ] Map HTTP status codes to FHIR codes
+- [ ] Validate FHIR search parameters before sending to server
+- [ ] Reject invalid codes/systems with descriptive errors
+- [ ] Log all FHIR errors with request details
+- [ ] Circuit breaker: Fail gracefully if FHIR server is down
+- [ ] Return meaningful error messages (no stack traces)
+- [ ] Timeout handling (5 second default per FHIR request)
+
+#### FHIR OperationOutcome Error Response
+```json
+{
+  "resourceType": "OperationOutcome",
+  "issue": [{
+    "severity": "error",
+    "code": "not-found",
+    "diagnostics": "Patient with ID 'invalid-id' not found in FHIR server",
+    "details": {
+      "coding": [{
+        "system": "http://hl7.org/fhir/operation-outcome",
+        "code": "MSG_NO_MATCH"
+      }]
+    }
+  }]
+}
+```
+
+#### Files to Modify
+- Update: `packages/backend/app/utils/errors.py` - Add FHIR error codes
+- Update: `packages/backend/app/main.py` - Add FHIR error handlers
+- New: `packages/backend/app/services/fhir_client.py` - Base FHIR client with error handling
+
+#### Test Cases
+```python
+def test_fhir_server_not_found()
+def test_fhir_invalid_parameters()
+def test_fhir_server_timeout()
+def test_fhir_server_down_circuit_breaker()
+def test_operation_outcome_format()
+```
+
+---
+
 ## 🧪 Sprint 2: Testing & Quality Assurance (Week 2-3, 52 hours)
 
 ### TASK-4.1: Backend Unit Tests ⏳
@@ -636,11 +1084,12 @@ Prepare and execute v1.0.0 release.
 
 | Sprint | Phase | Tasks | Hours | Priority |
 |--------|-------|-------|-------|----------|
-| 1 | Backend | 5 | 28 | HIGH |
+| 1 | Backend Fundamentals | 5 | 28 | HIGH |
+| **1b** | **🏥 FHIR Integration** | **6** | **32** | **CRITICAL** |
 | 2 | Testing | 6 | 52 | HIGH |
 | 3 | DevOps | 7 | 28 | HIGH |
 | 4 | Security | 6 | 33 | HIGH |
-| **Total** | **All** | **24** | **141** | - |
+| **Total** | **All** | **30** | **173** | - |
 
 ---
 
