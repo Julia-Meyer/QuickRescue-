@@ -3,6 +3,7 @@ aQuickRescue - Emergency Health Data Backend API
 Main FastAPI application with OAuth2, Patient search, and Audit logging
 """
 
+import fastapi
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -34,6 +35,7 @@ from app.services.fhir_patient import get_patient_service
 from app.services.fhir_medication import get_medication_service
 from app.services.fhir_allergy import get_allergy_service
 from app.services.fhir_summary import get_summary_service
+from app.services.fhir_service import FHIRService
 
 # ============================================================================
 # 1. DATABASE SETUP
@@ -308,13 +310,44 @@ class AuditService:
         })
 
 # ============================================================================
-# 6. FHIR CLIENT SERVICE
+# 6. FHIR CLIENT SERVICE (Mock.Health Integration)
 # ============================================================================
 
-class FHIRService:
-    """Service for FHIR server integration"""
+class MockHealthService:
+    """Service for Mock.Health FHIR API integration"""
 
-    FHIR_BASE_URL = os.getenv("FHIR_BASE_URL", "http://localhost:8080/fhir")
+    # Load Mock.Health config from env
+    HAPI_BASE_URL = os.getenv("FHIR_BASE_URL", "https://hapi.fhir.org/baseR4")
+    MOCK_HEALTH_API_URL = os.getenv("MOCK_HEALTH_API_URL", "https://api.mock.health")
+    MOCK_HEALTH_FHIR_URL = os.getenv("MOCK_HEALTH_FHIR_URL", "https://api.mock.health/fhir")
+    MOCK_HEALTH_API_KEY = os.getenv("MOCK_HEALTH_API_KEY", "")
+
+    # Cache TTLs (seconds)
+    TTL_PATIENT = int(os.getenv("CACHE_TTL_PATIENT", 3600))
+    TTL_MEDICATIONS = int(os.getenv("CACHE_TTL_MEDICATIONS", 1800))
+    TTL_ALLERGIES = int(os.getenv("CACHE_TTL_ALLERGIES", 1800))
+    TTL_CONDITIONS = int(os.getenv("CACHE_TTL_CONDITIONS", 3600))
+    TTL_RELATED = int(os.getenv("CACHE_TTL_RELATED", 3600))
+
+    @staticmethod
+    def _get_headers():
+        """Get HTTP headers with Mock.Health API key"""
+        return {
+            "Authorization": f"Bearer {MockHealthService.MOCK_HEALTH_API_KEY}",
+            "Content-Type": "application/fhir+json",
+            "Accept": "application/fhir+json"
+        }
+
+    @staticmethod
+    def _build_url(resource_type: str):
+        """Build FHIR resource URL for Mock.Health"""
+        return f"{MockHealthService.MOCK_HEALTH_FHIR_URL}/{resource_type}"
+
+
+class FHIRService:
+    """Service for FHIR server integration (delegates to MockHealthService)"""
+
+    FHIR_BASE_URL = MockHealthService.MOCK_HEALTH_FHIR_URL
     # cache TTLs (seconds)
     TTL_PATIENT = int(os.getenv("CACHE_TTL_PATIENT", 3600))
     TTL_MEDICATIONS = int(os.getenv("CACHE_TTL_MEDICATIONS", 1800))
@@ -325,21 +358,25 @@ class FHIRService:
     @staticmethod
     def search_patient(first_name: str, last_name: str, dob: str) -> dict:
         """
-        Search FHIR server for patient
+        Search Mock.Health FHIR server for patient
         Performance: Target < 2 seconds
         """
         import httpx
 
         try:
-            query = f"{FHIRService.FHIR_BASE_URL}/Patient"
-            params = {
-                "given": first_name,
-                "family": last_name,
-                "birthdate": dob
-            }
+            query = MockHealthService._build_url("Patient")
+            params = {}
+            if first_name:
+                params["given"] = first_name
+            if last_name:
+                params["family"] = last_name
+            if dob:
+                params["birthdate"] = dob
+
+            headers = MockHealthService._get_headers()
 
             with httpx.Client(timeout=5.0) as client:
-                response = client.get(query, params=params)
+                response = client.get(query, params=params, headers=headers)
                 response.raise_for_status()
 
             bundle = response.json()
@@ -359,22 +396,24 @@ class FHIRService:
                     "birthDate": resource.get("birthDate")
                 })
 
+            logger.info(f"Found {len(patients)} patients matching criteria")
             return {"found": True, "patients": patients}
         except Exception as e:
-            logger.error(f"FHIR search error: {str(e)}")
+            logger.error(f"Mock.Health FHIR search error: {str(e)}")
             return {"found": False, "error": str(e)}
 
     @staticmethod
     def get_patient_allergies(patient_id: str) -> List[dict]:
-        """Get patient allergies from FHIR server"""
+        """Get patient allergies from Mock.Health FHIR server"""
         import httpx
 
         try:
-            query = f"{FHIRService.FHIR_BASE_URL}/AllergyIntolerance"
+            query = MockHealthService._build_url("AllergyIntolerance")
             params = {"patient": patient_id}
+            headers = MockHealthService._get_headers()
 
             with httpx.Client(timeout=5.0) as client:
-                response = client.get(query, params=params)
+                response = client.get(query, params=params, headers=headers)
                 response.raise_for_status()
 
             bundle = response.json()
@@ -389,22 +428,24 @@ class FHIRService:
                     "criticality": resource.get("criticality", "unknown")
                 })
 
+            logger.info(f"Retrieved {len(allergies)} allergies for patient {patient_id}")
             return allergies
         except Exception as e:
-            logger.error(f"Error fetching allergies: {str(e)}")
+            logger.error(f"Error fetching allergies from Mock.Health: {str(e)}")
             return []
 
     @staticmethod
     def get_patient_medications(patient_id: str) -> List[dict]:
-        """Get patient medications from FHIR server"""
+        """Get patient medications (MedicationStatement) from Mock.Health FHIR server"""
         import httpx
 
         try:
-            query = f"{FHIRService.FHIR_BASE_URL}/MedicationStatement"
+            query = MockHealthService._build_url("MedicationStatement")
             params = {"patient": patient_id}
+            headers = MockHealthService._get_headers()
 
             with httpx.Client(timeout=5.0) as client:
-                response = client.get(query, params=params)
+                response = client.get(query, params=params, headers=headers)
                 response.raise_for_status()
 
             bundle = response.json()
@@ -413,19 +454,21 @@ class FHIRService:
             for entry in bundle.get("entry", []):
                 resource = entry.get("resource", {})
                 medications.append({
+                    "id": resource.get("id"),
                     "medication": resource.get("medicationReference", {}).get("display", "Unknown"),
                     "dosage": resource.get("dosage", [{}])[0].get("text", ""),
                     "status": resource.get("status", "unknown")
                 })
 
+            logger.info(f"Retrieved {len(medications)} medications for patient {patient_id}")
             return medications
         except Exception as e:
-            logger.error(f"Error fetching medications: {str(e)}")
+            logger.error(f"Error fetching medications from Mock.Health: {str(e)}")
             return []
 
     @staticmethod
     def get_patient(patient_id: str) -> dict:
-        """Get a single Patient resource from FHIR"""
+        """Get a single Patient resource from Mock.Health FHIR"""
         import httpx
         try:
             key = f"patient:{patient_id}"
@@ -434,26 +477,31 @@ class FHIRService:
                 from packages.backend.app.services.cache import cache
                 cached = cache.get(key)
                 if cached:
+                    logger.info(f"Cache hit for patient {patient_id}")
                     return cached
             except Exception:
                 cached = None
 
-            query = f"{FHIRService.FHIR_BASE_URL}/Patient/{patient_id}"
+            query = MockHealthService._build_url(f"Patient/{patient_id}")
+            headers = MockHealthService._get_headers()
+
             with httpx.Client(timeout=5.0) as client:
-                response = client.get(query)
+                response = client.get(query, headers=headers)
                 response.raise_for_status()
 
             resource = response.json()
 
             # Cache
             try:
+                from packages.backend.app.services.cache import cache
                 cache.set(key, resource, FHIRService.TTL_PATIENT)
             except Exception:
                 pass
 
+            logger.info(f"Retrieved patient {patient_id} from Mock.Health")
             return resource
         except Exception as e:
-            logger.error(f"Error fetching patient {patient_id}: {str(e)}")
+            logger.error(f"Error fetching patient {patient_id} from Mock.Health: {str(e)}")
             return {}
 
     @staticmethod
@@ -465,26 +513,31 @@ class FHIRService:
                 from packages.backend.app.services.cache import cache
                 cached = cache.get(key)
                 if cached:
+                    logger.info(f"Cache hit for medication statements {patient_id}")
                     return cached
             except Exception:
                 cached = None
 
-            query = f"{FHIRService.FHIR_BASE_URL}/MedicationStatement"
+            query = MockHealthService._build_url("MedicationStatement")
             query_params = {"patient": patient_id}
             if params:
                 query_params.update(params)
 
+            headers = MockHealthService._get_headers()
+
             with httpx.Client(timeout=5.0) as client:
-                response = client.get(query, params=query_params)
+                response = client.get(query, params=query_params, headers=headers)
                 response.raise_for_status()
 
             bundle = response.json()
 
             try:
+                from packages.backend.app.services.cache import cache
                 cache.set(key, bundle, FHIRService.TTL_MEDICATIONS)
             except Exception:
                 pass
 
+            logger.info(f"Retrieved {bundle.get('total', 0)} medication statements for patient {patient_id}")
             return bundle
         except Exception as e:
             logger.error(f"Error fetching medication statements for {patient_id}: {str(e)}")
@@ -499,26 +552,31 @@ class FHIRService:
                 from packages.backend.app.services.cache import cache
                 cached = cache.get(key)
                 if cached:
+                    logger.info(f"Cache hit for conditions {patient_id}")
                     return cached
             except Exception:
                 cached = None
 
-            query = f"{FHIRService.FHIR_BASE_URL}/Condition"
+            query = MockHealthService._build_url("Condition")
             query_params = {"patient": patient_id}
             if params:
                 query_params.update(params)
 
+            headers = MockHealthService._get_headers()
+
             with httpx.Client(timeout=5.0) as client:
-                response = client.get(query, params=query_params)
+                response = client.get(query, params=query_params, headers=headers)
                 response.raise_for_status()
 
             bundle = response.json()
 
             try:
+                from packages.backend.app.services.cache import cache
                 cache.set(key, bundle, FHIRService.TTL_CONDITIONS)
             except Exception:
                 pass
 
+            logger.info(f"Retrieved {bundle.get('total', 0)} conditions for patient {patient_id}")
             return bundle
         except Exception as e:
             logger.error(f"Error fetching conditions for {patient_id}: {str(e)}")
@@ -533,26 +591,31 @@ class FHIRService:
                 from packages.backend.app.services.cache import cache
                 cached = cache.get(key)
                 if cached:
+                    logger.info(f"Cache hit for related persons {patient_id}")
                     return cached
             except Exception:
                 cached = None
 
-            query = f"{FHIRService.FHIR_BASE_URL}/RelatedPerson"
+            query = MockHealthService._build_url("RelatedPerson")
             query_params = {"patient": patient_id}
             if params:
                 query_params.update(params)
 
+            headers = MockHealthService._get_headers()
+
             with httpx.Client(timeout=5.0) as client:
-                response = client.get(query, params=query_params)
+                response = client.get(query, params=query_params, headers=headers)
                 response.raise_for_status()
 
             bundle = response.json()
 
             try:
+                from packages.backend.app.services.cache import cache
                 cache.set(key, bundle, FHIRService.TTL_RELATED)
             except Exception:
                 pass
 
+            logger.info(f"Retrieved {bundle.get('total', 0)} related persons for patient {patient_id}")
             return bundle
         except Exception as e:
             logger.error(f"Error fetching related persons for {patient_id}: {str(e)}")
@@ -865,256 +928,6 @@ def search_patients(
     """
     # Check if user is responder or higher
     if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
-        raise HTTPException(status_code=403, detail="Only first responders can search patients")
-
-    # Search FHIR server
-    result = FHIRService.search_patient(first_name, last_name, date_of_birth)
-
-    # Log search attempt
-    AuditService.log_access(
-        db=db,
-        user_id=current_user.id,
-        patient_id=0,  # Not patient-specific yet
-        action="PATIENT_SEARCH",
-        resource_type="Patient",
-        resource_id="multiple",
-        reason="Patient identification during emergency",
-        ip_address="127.0.0.1",  # Would be real IP from request
-        status="SUCCESS"
-    )
-
-    return result
-
-@app.post("/api/v1/emergency-access")
-def request_emergency_access(
-    request: EmergencyAccessRequest,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Request emergency access to patient data
-
-    Flow:
-    1. Validate responder role
-    2. Verify patient exists and emergency access enabled
-    3. Log access request
-    4. Return patient data (allergies, medications, contacts)
-    5. Create FHIR AuditEvent
-
-    Speckit Compliance: Audit logging 100%, <5 second response
-    """
-    # Role check
-    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-
-    # Find patient
-    patient = db.query(PatientProfile).filter(
-        PatientProfile.fhir_patient_id == request.patient_id
-    ).first()
-
-    if not patient:
-        # Log failed access attempt
-        AuditService.log_access(
-            db=db,
-            user_id=current_user.id,
-            patient_id=0,
-            action="EMERGENCY_ACCESS_DENIED",
-            resource_type="Patient",
-            resource_id=request.patient_id,
-            reason="Patient not found",
-            ip_address="127.0.0.1",
-            status="DENIED",
-            error_message="Patient not found"
-        )
-        raise HTTPException(status_code=404, detail="Patient not found")
-
-    if not patient.emergency_access_enabled:
-        # Log denied access
-        AuditService.log_access(
-            db=db,
-            user_id=current_user.id,
-            patient_id=patient.id,
-            action="EMERGENCY_ACCESS_DENIED",
-            resource_type="Patient",
-            resource_id=request.patient_id,
-            reason="Emergency access not enabled",
-            ip_address="127.0.0.1",
-            status="DENIED",
-            error_message="Emergency access not enabled by patient"
-        )
-        raise HTTPException(status_code=403, detail="Patient has not enabled emergency access")
-
-    # Log successful access
-    AuditService.log_access(
-        db=db,
-        user_id=current_user.id,
-        patient_id=patient.id,
-        action="EMERGENCY_ACCESS_GRANTED",
-        resource_type="Patient",
-        resource_id=request.patient_id,
-        reason=request.reason,
-        ip_address="127.0.0.1",
-        gps_location=request.gps_location,
-        status="SUCCESS"
-    )
-
-    # Record emergency access
-    emergency_access = EmergencyAccess(
-        patient_id=patient.id,
-        responder_id=current_user.id,
-        reason=request.reason,
-        gps_location=request.gps_location,
-        data_requested=",".join(request.requested_data),
-        ip_address="127.0.0.1"
-    )
-    db.add(emergency_access)
-    db.commit()
-
-    # Retrieve patient data from FHIR
-    allergies = FHIRService.get_patient_allergies(patient.fhir_patient_id)
-    medications = FHIRService.get_patient_medications(patient.fhir_patient_id)
-
-    return {
-        "patient": {
-            "id": patient.fhir_patient_id,
-            "name": f"{patient.first_name} {patient.last_name}",
-            "dob": patient.date_of_birth
-        },
-        "emergency_contact": {
-            "name": patient.emergency_contact_name,
-            "phone": patient.emergency_contact_phone
-        },
-        "allergies": allergies,
-        "medications": medications,
-        "access_timestamp": datetime.utcnow().isoformat(),
-        "access_id": emergency_access.id
-    }
-
-@app.get("/api/v1/audit-trail")
-def get_audit_trail(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-    limit: int = 50
-):
-    """
-    Get audit trail for current user's data
-
-    - PATIENT role: Sees who accessed their data
-    - ADMIN role: Sees all accesses
-    """
-    if current_user.role == "PATIENT":
-        # Patient sees accesses to their own data
-        patient = db.query(PatientProfile).filter(
-            PatientProfile.user_id == current_user.id
-        ).first()
-        if not patient:
-            return []
-
-        audits = db.query(AuditLog).filter(
-            AuditLog.patient_id == patient.id
-        ).order_by(AuditLog.timestamp.desc()).limit(limit).all()
-    else:
-        # Admin sees all
-        audits = db.query(AuditLog).order_by(
-            AuditLog.timestamp.desc()
-        ).limit(limit).all()
-
-    return [
-        {
-            "timestamp": audit.timestamp,
-            "user": audit.user.username if audit.user else "Unknown",
-            "action": audit.action,
-            "resource_type": audit.resource_type,
-            "reason": audit.reason,
-            "status": audit.status
-        }
-        for audit in audits
-    ]
-
-@app.get("/api/v1/health")
-def health_check():
-    """Health check endpoint for monitoring"""
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "version": "0.1.0"
-    }
-@app.get("/api/v1/fhir/patients")
-def fhir_search_patients(
-    given: str = None,
-    family: str = None,
-    birthdate: str = None,
-    _count: int = 20,
-    _offset: int = 0,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
-):
-    """Search patients on FHIR server (pass-through)"""
-    # Access control: responders and admins
-    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-
-    params = {}
-    if given:
-        params["given"] = given
-    if family:
-        params["family"] = family
-    if birthdate:
-        params["birthdate"] = birthdate
-    params["_count"] = _count
-    params["_offset"] = _offset
-
-    # Use existing search_patient as convenience (maps different param names)
-    result = FHIRService.search_patient(given or "", family or "", birthdate or "")
-
-    # Audit
-    AuditService.log_access(
-        db=db,
-        user_id=current_user.id,
-        patient_id=0,
-        action="FHIR_PATIENT_SEARCH",
-        resource_type="Patient",
-        resource_id="multiple",
-        reason="FHIR patient search",
-        ip_address="127.0.0.1",
-        status="SUCCESS"
-    )
-
-    return result
-
-
-@app.get("/api/v1/fhir/patients/{patient_id}")
-def fhir_get_patient(patient_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Get single Patient resource from FHIR"""
-    # Access control: responders, patients (if own), admin
-    # For simplicity allow responders and admins
-    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN", "PATIENT"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-
-    resource = FHIRService.get_patient(patient_id)
-
-    # Audit
-    AuditService.log_access(
-        db=db,
-        user_id=current_user.id,
-        patient_id=0,
-        action="FHIR_GET_PATIENT",
-        resource_type="Patient",
-        resource_id=patient_id,
-        reason="Patient lookup",
-        ip_address="127.0.0.1",
-        status="SUCCESS" if resource else "FAILED"
-    )
-
-    if not resource:
-        raise HTTPException(status_code=404, detail="Patient not found")
-    return resource
-
-
-@app.get("/api/v1/fhir/medication-statements")
-def fhir_medication_statements(patient: str, status: str = None, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """List MedicationStatement resources for a patient"""
-    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
 
     params = {}
@@ -1125,169 +938,4 @@ def fhir_medication_statements(patient: str, status: str = None, current_user: U
 
     AuditService.log_access(
         db=db,
-        user_id=current_user.id,
-        patient_id=0,
-        action="FHIR_GET_MEDICATIONS",
-        resource_type="MedicationStatement",
-        resource_id=patient,
-        reason="Medication retrieval",
-        ip_address="127.0.0.1",
-        status="SUCCESS"
-    )
-
-    return bundle
-
-
-@app.get("/api/v1/fhir/allergies")
-def fhir_allergies(patient: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """List AllergyIntolerance resources for a patient"""
-    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-
-    bundle = FHIRService.get_patient_allergies(patient)
-
-    AuditService.log_access(
-        db=db,
-        user_id=current_user.id,
-        patient_id=0,
-        action="FHIR_GET_ALLERGIES",
-        resource_type="AllergyIntolerance",
-        resource_id=patient,
-        reason="Allergy retrieval",
-        ip_address="127.0.0.1",
-        status="SUCCESS"
-    )
-
-    return {"entry": bundle}
-
-
-@app.get("/api/v1/fhir/conditions")
-def fhir_conditions(patient: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """List Condition resources for a patient"""
-    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-
-    bundle = FHIRService.get_conditions(patient)
-
-    AuditService.log_access(
-        db=db,
-        user_id=current_user.id,
-        patient_id=0,
-        action="FHIR_GET_CONDITIONS",
-        resource_type="Condition",
-        resource_id=patient,
-        reason="Condition retrieval",
-        ip_address="127.0.0.1",
-        status="SUCCESS"
-    )
-
-    return bundle
-
-
-@app.get("/api/v1/fhir/related-persons")
-def fhir_related_persons(patient: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """List RelatedPerson resources for a patient"""
-    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-
-    bundle = FHIRService.get_related_persons(patient)
-
-    AuditService.log_access(
-        db=db,
-        user_id=current_user.id,
-        patient_id=0,
-        action="FHIR_GET_RELATED",
-        resource_type="RelatedPerson",
-        resource_id=patient,
-        reason="Related person retrieval",
-        ip_address="127.0.0.1",
-        status="SUCCESS"
-    )
-
-    return bundle
-
-
-@app.get("/api/v1/fhir/patient-summary/{patient_id}")
-def fhir_patient_summary(patient_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    """Return combined emergency patient summary from approved FHIR resources"""
-    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
-        raise HTTPException(status_code=403, detail="Insufficient permissions")
-
-    # Parallel fetch of the five resources
-    from concurrent.futures import ThreadPoolExecutor
-
-    def fetch_patient():
-        return FHIRService.get_patient(patient_id)
-
-    def fetch_allergies():
-        return FHIRService.get_patient_allergies(patient_id)
-
-    def fetch_meds():
-        return FHIRService.get_medication_statements(patient_id)
-
-    def fetch_conds():
-        return FHIRService.get_conditions(patient_id)
-
-    def fetch_related():
-        return FHIRService.get_related_persons(patient_id)
-
-    with ThreadPoolExecutor(max_workers=5) as ex:
-        p_f = ex.submit(fetch_patient)
-        a_f = ex.submit(fetch_allergies)
-        m_f = ex.submit(fetch_meds)
-        c_f = ex.submit(fetch_conds)
-        r_f = ex.submit(fetch_related)
-
-        patient = p_f.result()
-        allergies = a_f.result()
-        medications = m_f.result()
-        conditions = c_f.result()
-        related = r_f.result()
-
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
-    # Build summary
-    summary = {
-        "patient": patient,
-        "allergies": allergies,
-        "medications": medications,
-        "conditions": conditions,
-        "relatedPersons": related,
-        "summary_generated_at": datetime.utcnow().isoformat()
-    }
-
-    # Audit
-    AuditService.log_access(
-        db=db,
-        user_id=current_user.id,
-        patient_id=0,
-        action="FHIR_PATIENT_SUMMARY",
-        resource_type="PatientSummary",
-        resource_id=patient_id,
-        reason="Emergency summary retrieval",
-        ip_address="127.0.0.1",
-        status="SUCCESS"
-    )
-
-    return summary
-
-# ============================================================================
-# 10. STARTUP & SHUTDOWN
-# ============================================================================
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize app on startup"""
-    logger.info("aQuickRescue API starting...")
-    # Initialize database connections, warmup cache, etc.
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Cleanup on shutdown"""
-    logger.info("aQuickRescue API shutting down...")
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-
+                *** End Patch
