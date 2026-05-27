@@ -20,6 +20,21 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Import new services and error handlers
+from app.utils.errors import (
+    AppException,
+    InvalidCredentialsError,
+    TokenExpiredError,
+    InvalidTokenError,
+    UnauthorizedError,
+    PatientNotFoundError,
+    EmergencyAccessNotEnabledError
+)
+from app.services.fhir_patient import get_patient_service
+from app.services.fhir_medication import get_medication_service
+from app.services.fhir_allergy import get_allergy_service
+from app.services.fhir_summary import get_summary_service
+
 # ============================================================================
 # 1. DATABASE SETUP
 # ============================================================================
@@ -563,7 +578,250 @@ app.add_middleware(
 )
 
 # ============================================================================
-# 8. API ENDPOINTS
+# GLOBAL ERROR HANDLERS
+# ============================================================================
+
+@app.exception_handler(AppException)
+async def app_exception_handler(request, exc: AppException):
+    """Handle custom application exceptions"""
+    logger.error(f"App exception: {exc.error_code} - {exc.message}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.error_code,
+            "message": exc.message,
+            "status": exc.status_code,
+            "timestamp": exc.timestamp,
+            "request_id": exc.request_id,
+            **({"details": exc.details} if exc.details else {})
+        }
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc: HTTPException):
+    """Handle HTTP exceptions"""
+    logger.error(f"HTTP exception: {exc.status_code} - {exc.detail}")
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=exc.detail
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc: Exception):
+    """Handle unexpected exceptions"""
+    logger.error(f"Unexpected error: {type(exc).__name__} - {str(exc)}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "SERVER_001",
+            "message": "An unexpected error occurred",
+            "status": 500
+        }
+    )
+
+# ============================================================================
+# 8. FHIR INTEGRATION ENDPOINTS (TASK-3.6 through TASK-3.10)
+# ============================================================================
+
+# -------- FHIR Patient Endpoints (TASK-3.6) --------
+
+@app.get("/api/v1/fhir/patients")
+async def search_fhir_patients(
+    given: Optional[str] = None,
+    family: Optional[str] = None,
+    birthdate: Optional[str] = None,
+    email: Optional[str] = None,
+    identifier: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Search FHIR Patient resources
+    
+    Access Control: FIRST_RESPONDER, PHYSICIAN, ADMIN only
+    Performance: Target < 2 seconds
+    """
+    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
+        raise UnauthorizedError("Only first responders can search patients")
+    
+    # Log search attempt
+    AuditService.log_access(
+        db=db,
+        user_id=current_user.id,
+        patient_id=0,
+        action="FHIR_PATIENT_SEARCH",
+        resource_type="Patient",
+        resource_id="multiple",
+        reason=f"Patient search: {given} {family}",
+        ip_address="127.0.0.1",
+        status="SUCCESS"
+    )
+    
+    patient_service = get_patient_service()
+    return await patient_service.search_patients(
+        given=given,
+        family=family,
+        birthdate=birthdate,
+        email=email,
+        identifier=identifier,
+        limit=limit,
+        offset=offset
+    )
+
+
+@app.get("/api/v1/fhir/patients/{patient_id}")
+async def get_fhir_patient(
+    patient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get single FHIR Patient by ID
+    """
+    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN", "PATIENT"]:
+        raise UnauthorizedError()
+    
+    # Log access
+    AuditService.log_access(
+        db=db,
+        user_id=current_user.id,
+        patient_id=0,
+        action="FHIR_PATIENT_READ",
+        resource_type="Patient",
+        resource_id=patient_id,
+        reason="Get patient details",
+        ip_address="127.0.0.1",
+        status="SUCCESS"
+    )
+    
+    patient_service = get_patient_service()
+    return await patient_service.get_patient(patient_id)
+
+
+# -------- FHIR Allergy Endpoints (TASK-3.8) - CRITICAL --------
+
+@app.get("/api/v1/fhir/allergies")
+async def get_patient_allergies(
+    patient: str,
+    clinical_status: Optional[str] = "active",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get patient allergies - CRITICAL for emergency responders
+    
+    Returns critical allergies with severity flags
+    """
+    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
+        raise UnauthorizedError()
+    
+    # Extract patient ID
+    patient_id = patient.split("/")[-1] if "/" in patient else patient
+    
+    # Log access (important!)
+    AuditService.log_access(
+        db=db,
+        user_id=current_user.id,
+        patient_id=0,
+        action="FHIR_ALLERGY_READ",
+        resource_type="AllergyIntolerance",
+        resource_id=patient_id,
+        reason="Emergency access - check allergies",
+        ip_address="127.0.0.1",
+        status="SUCCESS"
+    )
+    
+    allergy_service = get_allergy_service()
+    return await allergy_service.get_patient_allergies(
+        patient_id=patient_id,
+        clinical_status=clinical_status
+    )
+
+
+# -------- FHIR Medication Endpoints (TASK-3.7) --------
+
+@app.get("/api/v1/fhir/medications")
+async def get_patient_medications(
+    patient: str,
+    status: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get patient medications from MedicationDispense
+    """
+    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
+        raise UnauthorizedError()
+    
+    # Extract patient ID
+    patient_id = patient.split("/")[-1] if "/" in patient else patient
+    
+    # Log access
+    AuditService.log_access(
+        db=db,
+        user_id=current_user.id,
+        patient_id=0,
+        action="FHIR_MEDICATION_READ",
+        resource_type="MedicationDispense",
+        resource_id=patient_id,
+        reason="Get patient medications",
+        ip_address="127.0.0.1",
+        status="SUCCESS"
+    )
+    
+    medication_service = get_medication_service()
+    return await medication_service.get_patient_medications(
+        patient_id=patient_id,
+        status=status
+    )
+
+
+# -------- FHIR Emergency Summary Endpoint (TASK-3.10) - CRITICAL --------
+
+@app.get("/api/v1/fhir/patient-summary/{patient_id}")
+async def get_emergency_patient_summary(
+    patient_id: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get comprehensive patient summary for emergency responders
+    
+    CRITICAL ENDPOINT - Returns everything needed in < 3 seconds
+    Includes allergies, medications, conditions, vital signs
+    
+    Performance Target: < 3 seconds
+    """
+    if current_user.role not in ["FIRST_RESPONDER", "EMERGENCY_PHYSICIAN", "ADMIN"]:
+        raise UnauthorizedError("Only emergency responders can access patient summary")
+    
+    # Log emergency access
+    AuditService.log_access(
+        db=db,
+        user_id=current_user.id,
+        patient_id=0,
+        action="EMERGENCY_SUMMARY_ACCESS",
+        resource_type="Patient",
+        resource_id=patient_id,
+        reason="Emergency patient summary access",
+        ip_address="127.0.0.1",
+        status="SUCCESS"
+    )
+    
+    summary_service = get_summary_service()
+    summary = await summary_service.get_patient_summary(patient_id)
+    
+    # Log response time warning if slow
+    if summary.get("response_time_ms", 0) >= 3000:
+        logger.warning(f"Emergency summary response time: {summary['response_time_ms']:.0f}ms (exceeds 3s target)")
+    
+    return summary
+
+
+# ============================================================================
+# 9. API ENDPOINTS (ORIGINAL)
 # ============================================================================
 
 @app.post("/api/v1/auth/login")
@@ -1015,7 +1273,7 @@ def fhir_patient_summary(patient_id: str, current_user: User = Depends(get_curre
     return summary
 
 # ============================================================================
-# 9. STARTUP & SHUTDOWN
+# 10. STARTUP & SHUTDOWN
 # ============================================================================
 
 @app.on_event("startup")
