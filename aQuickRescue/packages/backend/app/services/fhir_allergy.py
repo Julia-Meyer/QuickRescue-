@@ -2,14 +2,49 @@
 FHIR AllergyIntolerance Service
 Handles patient allergies with critical severity highlighting
 TASK-3.8 Implementation - CRITICAL for Emergency Responders
+
+Uses SNOMED CT codes for critical allergy flag detection.
+Configuration: packages/backend/app/config/snomed_flags.json
 """
 
 import logging
+import json
+import os
 from typing import Dict, List, Optional, Any
 from app.services.fhir_client import get_fhir_client
 from app.utils.errors import PatientNotFoundError
 
 logger = logging.getLogger(__name__)
+
+# Load SNOMED code mapping configuration
+_SNOMED_CONFIG = None
+
+def _load_snomed_config() -> Dict[str, Any]:
+    """Load SNOMED CT code to critical flag mapping"""
+    global _SNOMED_CONFIG
+    if _SNOMED_CONFIG is not None:
+        return _SNOMED_CONFIG
+
+    config_path = os.path.join(
+        os.path.dirname(__file__),
+        "..",
+        "config",
+        "snomed_flags.json"
+    )
+
+    try:
+        with open(config_path, 'r') as f:
+            _SNOMED_CONFIG = json.load(f)
+        logger.info(f"Loaded SNOMED configuration from {config_path}")
+    except FileNotFoundError:
+        logger.warning(f"SNOMED config not found at {config_path}, using defaults")
+        _SNOMED_CONFIG = {
+            "snomed_system": "http://snomed.info/sct",
+            "critical_codes": {},
+            "critical_reaction_codes": {}
+        }
+
+    return _SNOMED_CONFIG
 
 
 class FHIRAllergyService:
@@ -200,35 +235,65 @@ def _format_allergy(resource: Dict[str, Any]) -> Dict[str, Any]:
 
 def _generate_critical_flags(resource: Dict[str, Any]) -> List[str]:
     """
-    Generate critical flags for emergency responders
+    Generate critical flags for emergency responders using SNOMED CT code mapping
+
+    Explicit SNOMED system validation ensures flags only generated from
+    recognized clinical coding systems.
     """
+    config = _load_snomed_config()
+    snomed_system = config.get("snomed_system", "http://snomed.info/sct")
+    critical_codes_map = config.get("critical_codes", {})
+    critical_reaction_codes = config.get("critical_reaction_codes", {})
+
     flags = []
 
-    # Check criticality
-    if resource.get("criticality") == "high":
-        flags.append("CRITICAL_ALLERGY")
-
-    # Check severity
-    reactions = resource.get("reaction", [])
-    if any(r.get("severity") == "severe" for r in reactions):
-        flags.append("SEVERE_REACTION")
-
-    # Check for anaphylaxis
-    for reaction in reactions:
-        for manifestation in reaction.get("manifestation", []):
-            coding = manifestation.get("coding", [{}])[0]
-            if coding.get("code") == "39579001":  # Anaphylaxis
-                flags.append("ANAPHYLAXIS_RISK")
-            if "shock" in coding.get("display", "").lower():
-                flags.append("SHOCK_RISK")
-
-    # Check allergen type
+    # Check allergen code (main allergen)
     code = resource.get("code", {})
     coding = code.get("coding", [{}])[0]
-    if coding.get("code") == "2670000":  # Penicillin
-        flags.append("ANTIBIOTIC_ALLERGY")
 
-    return flags
+    # EXPLICIT CHECK: Verify this is SNOMED CT coding
+    if coding.get("system") == snomed_system:
+        allergen_code = coding.get("code")
+
+        # Look up allergen code in mapping
+        for category, category_info in critical_codes_map.items():
+            if allergen_code in category_info.get("codes", []):
+                flag = category_info.get("flag")
+                if flag:
+                    flags.append(flag)
+                logger.debug(f"SNOMED allergen {allergen_code} mapped to {flag}")
+    else:
+        logger.debug(f"Allergen code uses non-SNOMED system: {coding.get('system')}")
+
+    # Check severity
+    criticality = resource.get("criticality", "unable-to-assess")
+    if criticality == "high":
+        flags.append("CRITICAL_ALLERGY")
+
+    # Check reaction severity and manifestations
+    reactions = resource.get("reaction", [])
+    for reaction in reactions:
+        severity = reaction.get("severity", "unknown")
+        if severity == "severe":
+            flags.append("SEVERE_REACTION")
+
+        # Check reaction manifestations (symptoms)
+        for manifestation in reaction.get("manifestation", []):
+            manifest_coding = manifestation.get("coding", [{}])[0]
+
+            # EXPLICIT CHECK: Verify manifestation is SNOMED coded
+            if manifest_coding.get("system") == snomed_system:
+                reaction_code = manifest_coding.get("code")
+
+                # Check if this reaction code has critical mapping
+                if reaction_code in critical_reaction_codes:
+                    critical_info = critical_reaction_codes[reaction_code]
+                    reaction_flag = critical_info.get("flag")
+                    if reaction_flag:
+                        flags.append(reaction_flag)
+                    logger.debug(f"SNOMED reaction {reaction_code} mapped to {reaction_flag}")
+
+    return sorted(list(set(flags)))  # Remove duplicates and sort
 
 
 # ============================================================================

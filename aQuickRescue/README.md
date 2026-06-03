@@ -83,7 +83,7 @@ Patient App (iOS/Android)
 │ - Audit Service         │
 │ - FHIR Client Layer     │
 └──────────┬──────────────┘
-     ┌─────┼─────┐
+     ┌─────┼─────┐ 
      ↓     ↓     ↓
   PostgreSQL  FHIR  Audit
    Database  Server  Logs
