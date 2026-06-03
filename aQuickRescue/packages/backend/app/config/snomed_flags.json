@@ -1,0 +1,104 @@
+{
+  "comment": "SNOMED CT Code to Critical Flag Mapping",
+  "snomed_system": "http://snomed.info/sct",
+  "critical_codes": {
+    "anaphylaxis": {
+      "codes": ["39579001"],
+      "flag": "ANAPHYLAXIS_RISK",
+      "description": "Anaphylactic reaction - immediate medical emergency"
+    },
+    "shock": {
+      "codes": ["27942005"],
+      "flag": "SHOCK_RISK",
+      "description": "Shock reaction"
+    },
+    "penicillin": {
+      "codes": ["2670000"],
+      "flag": "ANTIBIOTIC_ALLERGY_PENICILLIN",
+      "description": "Penicillin allergy"
+    },
+    "beta_lactam": {
+      "codes": ["294497008", "294498003"],
+      "flag": "ANTIBIOTIC_ALLERGY_BETA_LACTAM",
+      "description": "Beta-lactam antibiotic allergy"
+    },
+    "sulfonamides": {
+      "codes": ["294499006"],
+      "flag": "ANTIBIOTIC_ALLERGY_SULFONAMIDES",
+      "description": "Sulfonamide allergy"
+    },
+    "fluoroquinolones": {
+      "codes": ["294500002"],
+      "flag": "ANTIBIOTIC_ALLERGY_FLUOROQUINOLONES",
+      "description": "Fluoroquinolone allergy"
+    },
+    "nsaid": {
+      "codes": ["294501003"],
+      "flag": "NSAID_ALLERGY",
+      "description": "NSAID (non-steroidal anti-inflammatory drug) allergy"
+    },
+    "aspirin": {
+      "codes": ["294502005"],
+      "flag": "ASPIRIN_ALLERGY",
+      "description": "Aspirin allergy"
+    },
+    "local_anesthetic": {
+      "codes": ["294503000"],
+      "flag": "LOCAL_ANESTHETIC_ALLERGY",
+      "description": "Local anesthetic allergy"
+    },
+    "contrast_media": {
+      "codes": ["294504006"],
+      "flag": "CONTRAST_MEDIA_ALLERGY",
+      "description": "Contrast media allergy - important for imaging"
+    },
+    "latex": {
+      "codes": ["294505007"],
+      "flag": "LATEX_ALLERGY",
+      "description": "Latex allergy"
+    },
+    "peanut": {
+      "codes": ["417217005"],
+      "flag": "PEANUT_ALLERGY",
+      "description": "Peanut allergy"
+    },
+    "tree_nut": {
+      "codes": ["417218000"],
+      "flag": "TREE_NUT_ALLERGY",
+      "description": "Tree nut allergy"
+    },
+    "shellfish": {
+      "codes": ["417219008"],
+      "flag": "SHELLFISH_ALLERGY",
+      "description": "Shellfish allergy"
+    },
+    "fish": {
+      "codes": ["417220002"],
+      "flag": "FISH_ALLERGY",
+      "description": "Fish allergy"
+    }
+  },
+  "severity_levels": {
+    "mild": 1,
+    "moderate": 2,
+    "severe": 3
+  },
+  "criticality_levels": {
+    "low": 1,
+    "high": 3,
+    "unable-to-assess": 2
+  },
+  "critical_reaction_codes": {
+    "39579001": {
+      "display": "Anaphylaxis",
+      "severity": "severe",
+      "flag": "ANAPHYLAXIS_RISK"
+    },
+    "27942005": {
+      "display": "Shock",
+      "severity": "severe",
+      "flag": "SHOCK_RISK"
+    }
+  }
+}
+
