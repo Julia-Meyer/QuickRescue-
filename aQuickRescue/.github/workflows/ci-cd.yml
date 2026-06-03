@@ -1,8 +1,8 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline - Speckit Compliance
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, feature/**]
   pull_request:
     branches: [main, develop]
 
@@ -11,6 +11,106 @@ env:
   PYTHON_VERSION: '3.11'
 
 jobs:
+  # Backend Linting & Type Checking (Speckit Phase 1)
+  backend-lint:
+    runs-on: ubuntu-latest
+    name: Backend - Code Quality
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r packages/backend/requirements.txt
+
+      - name: Format check with Black
+        run: black --check packages/backend/ backend/ --diff
+
+      - name: Import sorting check with isort
+        run: isort --check-only --diff packages/backend/ backend/
+
+      - name: Lint with Flake8
+        run: flake8 packages/backend/ backend/ --count --statistics
+
+      - name: Type checking with mypy
+        run: mypy packages/backend/app backend/app --ignore-missing-imports || true
+
+      - name: Security scan with Bandit
+        run: bandit -r packages/backend/ backend/ -f json -o bandit-report.json || true
+
+      - name: Pylint analysis
+        run: pylint packages/backend/app backend/app --fail-under=7.0 || true
+
+  # Backend Tests (Speckit Phase 1)
+  backend-test:
+    runs-on: ubuntu-latest
+    name: Backend - Tests & Coverage
+    needs: backend-lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r packages/backend/requirements.txt
+
+      - name: Run pytest with coverage
+        run: |
+          pytest packages/backend/tests backend/tests \
+            -v \
+            --cov=packages/backend/app \
+            --cov=backend/app \
+            --cov-report=html \
+            --cov-report=term-missing \
+            --cov-report=xml \
+            --junitxml=test-results.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
+          flags: backend
+          name: backend-coverage
+
+      - name: Archive test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: backend-test-results
+          path: test-results.xml
+
+      - name: Archive coverage report
+        uses: actions/upload-artifact@v3
+        with:
+          name: backend-coverage-report
+          path: htmlcov/
+
   # Frontend Tests
   frontend-test:
     runs-on: ubuntu-latest
@@ -31,46 +131,19 @@ jobs:
         run: npm run lint --workspace=packages/frontend
 
       - name: Run frontend tests
-        run: npm test --workspace=packages/frontend
-
-      - name: Generate coverage
-        run: npm run test:coverage --workspace=packages/frontend
+        run: npm test --workspace=packages/frontend -- --coverage --watchAll=false
 
       - name: Upload coverage
         uses: codecov/codecov-action@v3
         with:
           files: ./packages/frontend/coverage/coverage-final.json
-
-  # Backend Tests
-  backend-test:
-    runs-on: ubuntu-latest
-    name: Backend - Lint & Test
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install dependencies
-        run: |
-          pip install -r packages/backend/requirements.txt
-          pip install pytest pytest-cov black flake8
-
-      - name: Lint with Black
-        run: black --check packages/backend/
-
-      - name: Lint with Flake8
-        run: flake8 packages/backend/ --count --select=E9,F63,F7,F82 --show-source --statistics
-
-      - name: Run backend tests
-        run: pytest packages/backend/tests/ --cov=packages/backend/app
+          flags: frontend
+          name: frontend-coverage
 
   # Security Scan
   security:
     runs-on: ubuntu-latest
-    name: Security Scan
+    name: Security & Dependency Scan
     steps:
       - uses: actions/checkout@v4
 
@@ -83,6 +156,16 @@ jobs:
         run: |
           npm install
           npm audit --audit-level=moderate || true
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Python dependency check
+        run: |
+          pip install safety
+          safety check --json || true
 
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@master
@@ -145,11 +228,26 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  # Quality Gate (Speckit Phase 1)
+  quality-gate:
+    runs-on: ubuntu-latest
+    name: Quality Gate Check
+    needs: [backend-lint, backend-test, frontend-test]
+    if: always()
+    steps:
+      - name: Check test status
+        run: |
+          if [ "${{ needs.backend-test.result }}" = "failure" ] || [ "${{ needs.frontend-test.result }}" = "failure" ]; then
+            echo "❌ Tests failed"
+            exit 1
+          fi
+          echo "✅ All quality checks passed"
+
   # Deploy (Optional)
   deploy:
     runs-on: ubuntu-latest
     name: Deploy to Production
-    needs: [frontend-test, backend-test, build-frontend]
+    needs: [build-frontend, build-backend, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4

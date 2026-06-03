@@ -2,6 +2,16 @@
 FHIR Observation Service
 Handles vital signs, laboratory results, and other observations using LOINC codes
 Uses config: packages/backend/app/config/loinc_mapping.json
+
+⚠️  MVP STATUS: NOT REQUIRED FOR MVP
+This module is DEPRECATED for QuickRescue MVP (Phase 1).
+The system focuses on: Allergies, Medications, and Emergency Contacts.
+Observation support (vital signs, lab results) is reserved for Phase 2+.
+
+Reference: SPECIFICATION.md - Core emergency data includes ONLY:
+  - AllergyIntolerance (allergies)
+  - MedicationStatement (current medications)
+  - Patient.contact (emergency contacts)
 """
 
 import logging
@@ -57,7 +67,10 @@ class FHIRObservationService:
         limit: int = 10
     ) -> Dict[str, Any]:
         """
+        ⚠️  DEPRECATED: Not used in MVP
         Get patient vital signs (latest observations)
+
+        Reserved for Phase 2+ when Observation support is needed.
 
         Args:
             patient_id: FHIR Patient ID
@@ -67,6 +80,7 @@ class FHIRObservationService:
         Returns:
             Dictionary with formatted vital signs
         """
+        logger.warning(f"get_patient_vital_signs() called - feature not in MVP scope for patient {patient_id}")
         client = get_fhir_client()
         config = _load_loinc_config()
 
@@ -116,7 +130,10 @@ class FHIRObservationService:
         limit: int = 50
     ) -> Dict[str, Any]:
         """
+        ⚠️  DEPRECATED: Not used in MVP
         Get patient laboratory results
+
+        Reserved for Phase 2+ when Observation support is needed.
 
         Args:
             patient_id: FHIR Patient ID
@@ -127,6 +144,7 @@ class FHIRObservationService:
         Returns:
             Laboratory test results
         """
+        logger.warning(f"get_patient_lab_results() called - feature not in MVP scope for patient {patient_id}")
         client = get_fhir_client()
         config = _load_loinc_config()
 
@@ -176,7 +194,10 @@ class FHIRObservationService:
         loinc_code: str
     ) -> Optional[Dict[str, Any]]:
         """
+        ⚠️  DEPRECATED: Not used in MVP
         Get specific observation by LOINC code
+
+        Reserved for Phase 2+ when Observation support is needed.
 
         Args:
             patient_id: FHIR Patient ID
@@ -185,6 +206,7 @@ class FHIRObservationService:
         Returns:
             Observation or None
         """
+        logger.warning(f"get_observation_by_loinc() called with code {loinc_code} - feature not in MVP scope")
         client = get_fhir_client()
         config = _load_loinc_config()
 
