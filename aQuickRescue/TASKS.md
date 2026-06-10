@@ -4,6 +4,19 @@
 
 ---
 
+## ⚠️ MVP SCOPE UPDATE (2026-06-03)
+
+**OBSERVATIONS (Vital Signs & Lab Results) REMOVED FROM MVP PHASE 1**
+
+See `MVP_SCOPE.md` for complete rationale. TL;DR:
+- ❌ **TASK-3.13** (Additional FHIR Resources) is **DEFERRED to Phase 2+**
+- ✅ MVP focuses on: **Patient Search, Allergies, Medications, Contacts**
+- ⏸️ Observation/Vital Signs endpoints will be added when hospital partners request them
+- 📁 `loinc_mapping.json` reduced from 533 → 30 lines
+- 🔴 `fhir_observation.py` marked as @deprecated (logs warnings)
+
+---
+
 ## 🎯 Sprint 1: Backend Fundamentals (Week 1, 28 hours)
 
 ### TASK-3.1: User Login Endpoint ⏳
