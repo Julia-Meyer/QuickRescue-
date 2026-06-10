@@ -6,7 +6,7 @@
 setlocal enabledelayedexpansion
 
 echo.
-echo 🚀 Starting Speckit Phase 1 Setup for aQuickRescue...
+echo  Starting Speckit Phase 1 Setup for aQuickRescue...
 echo.
 
 REM Check Python version
@@ -155,4 +155,3 @@ exit /b 1
 
 :End
 endlocal
-

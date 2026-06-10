@@ -4,13 +4,11 @@
  */
 
 import { create } from 'zustand'
-import { subscribeWithSelector } from 'zustand/middleware'
 
 /**
  * Main application store
  */
-export const store = create(
-  subscribeWithSelector((set, get) => ({
+export const store = create((set, get) => ({
     // Auth state
     isAuthenticated: false,
     user: null,
@@ -115,7 +113,7 @@ export const store = create(
       auditFilter: { action: null, status: null },
       pagination: { page: 1, limit: 50, total: 0 }
     })
-  }))
+  })
 )
 
 /**

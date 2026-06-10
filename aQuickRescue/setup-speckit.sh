@@ -5,7 +5,7 @@
 
 set -e  # Exit on error
 
-echo "🚀 Starting Speckit Phase 1 Setup for aQuickRescue..."
+echo " Starting Speckit Phase 1 Setup for aQuickRescue..."
 echo ""
 
 # Colors for output
@@ -124,4 +124,3 @@ echo ""
 echo -e "${YELLOW}ℹ️  Git pre-commit hooks are now active!${NC}"
 echo "   They will run automatically before each commit."
 echo ""
-

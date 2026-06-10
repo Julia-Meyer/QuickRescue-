@@ -14,4 +14,3 @@ exclude_dirs = tests,venv,migrations,.venv,build,dist
 skip_tests = [
   B101,  # assert_used
 ]
-
