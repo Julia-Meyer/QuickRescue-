@@ -75,7 +75,6 @@ autopep8==2.0.4               # Auto code formatting
 
 gunicorn==21.2.0              # WSGI HTTP Server
 whitenoise==6.6.0             # Static file serving
-python-cors==0.1.3            # Alternative CORS (if needed)
 
 # ============================================================================
 # OPTIONAL: ADVANCED FEATURES
