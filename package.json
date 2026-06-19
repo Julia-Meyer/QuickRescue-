@@ -1,0 +1,31 @@
+{
+  "name": "aQuickRescue",
+  "version": "0.1.0",
+  "description": "Emergency Health Data Access Platform - FHIR & Audit Compliant",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "install:all": "npm install && npm install --workspace=frontend && npm install --workspace=shared",
+    "dev": "npm run dev --workspace=frontend",
+    "build": "npm run build --workspace=frontend && npm run build --workspace=shared",
+    "test": "npm test --workspace=frontend && npm test --workspace=shared",
+    "test:coverage": "npm run test:coverage --workspace=frontend",
+    "lint": "npm run lint --workspace=frontend && npm run lint --workspace=shared",
+    "lint:fix": "npm run lint:fix --workspace=frontend && npm run lint:fix --workspace=shared",
+    "format": "prettier --write \"{backend,frontend,shared}/**/*.{js,jsx,ts,tsx,json,css,html,py}\"",
+    "backend:requirements": "pip install -r backend/requirements.txt",
+    "backend:test": "pytest backend/tests/"
+  },
+  "workspaces": [
+    "frontend",
+    "shared"
+  ],
+  "devDependencies": {
+    "prettier": "^3.2.5"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
+

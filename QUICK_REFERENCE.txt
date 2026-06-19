@@ -1,0 +1,128 @@
+# ⚡ aQuickRescue - Quick Reference Card
+
+## 🎯 RIGHT NOW
+
+```
+Open: http://localhost:5173
+Login: patient1 / password123
+```
+
+---
+
+## 🔧 System Status
+
+| Component | Port | Status | Command |
+|-----------|------|--------|---------|
+| Frontend | 5173 | ✅ | `npm run dev` (in frontend/) |
+| Backend | 8000 | ✅ | `python -m uvicorn app.main:app --reload` (in backend/) |
+
+---
+
+## 🔐 Demo Accounts
+
+| User | Pass | Role |
+|------|------|------|
+| patient1 | password123 | Patient |
+| responder1 | password123 | Responder |
+| admin1 | password123 | Admin |
+
+---
+
+## 🌐 URLs
+
+| Purpose | URL |
+|---------|-----|
+| Frontend | http://localhost:5173 |
+| API Docs | http://localhost:8000/docs |
+| Health | http://localhost:8000/health |
+| ReDoc | http://localhost:8000/redoc |
+
+---
+
+## 🆘 Emergency Fixes
+
+### Empty Page?
+```powershell
+# 1. Hard refresh
+Ctrl+Shift+R
+
+# 2. Check console (F12)
+# Look for error messages
+
+# 3. Restart frontend
+cd frontend && npm run dev
+```
+
+### Login Fails?
+```powershell
+# 1. Check backend running
+Test-NetConnection -ComputerName 127.0.0.1 -Port 8000
+
+# 2. Start backend if needed
+cd backend
+python -m uvicorn app.main:app --reload
+```
+
+### Services Won't Start?
+```powershell
+# Kill everything
+taskkill /IM node.exe /F
+
+# Restart frontend
+cd frontend && npm run dev
+```
+
+---
+
+## 🐛 Debug Tips
+
+1. **Open DevTools**: F12
+2. **Console Tab**: Check for errors (red text)
+3. **Network Tab**: Check for failed requests (4xx, 5xx)
+4. **Application Tab**: Check localStorage and IndexedDB
+5. **Copy errors and ask for help**
+
+---
+
+## ✅ What Should You See
+
+- ✓ Login form with username/password fields
+- ✓ "aQuickRescue" header and logo
+- ✓ Demo credentials displayed on form
+- ✓ After login: Dashboard with user info
+- ✓ No red errors in console
+
+---
+
+## 📝 Quick Tests
+
+1. Open `http://localhost:5173` → See login
+2. Login with `patient1` → See dashboard
+3. Logout → Back to login
+4. Login with `responder1` → Different dashboard
+5. Visit `http://localhost:8000/docs` → See API
+
+---
+
+## 🔧 What Was Fixed
+
+**File**: `frontend/vite.config.js`
+**Change**: Added `assetsInclude: ['**/*.wasm']`
+**Result**: Frontend now loads correctly
+
+---
+
+## 📚 Detailed Guides
+
+- **Full Guide**: `COMPLETE_DEMO_GUIDE.md`
+- **Setup Steps**: `QUICK_START_DEMO.md`
+- **Immediate Next Steps**: `IMMEDIATE_NEXT_STEPS.md`
+- **Status**: `DEMO_READY.md`
+
+---
+
+**Status**: ✅ READY
+**Time to Demo**: < 2 minutes
+**Browser**: Any (Chrome, Firefox, Safari, Edge)
+
+
