@@ -1,12 +1,9 @@
-/**
- * Dashboard Page
- */
-
 import { getCurrentUser, isFirstResponder, isPatient, isAdmin } from '../services/auth.js'
 import { formatRole, formatRelativeTime } from '../utils/formatters.js'
+import { link } from '../router/index.js'
 
 export const createDashboardPage = {
-  render() {
+ render() {
     const user = getCurrentUser()
 
     return `
@@ -21,13 +18,13 @@ export const createDashboardPage = {
             <div class="dashboard-card">
               <h2>🔍 Patient suchen</h2>
               <p>Nach Patienten nach Namen und Geburtsdatum suchen</p>
-              <a href="/search" class="btn btn-primary">Zur Suche</a>
+              ${link('/search', 'Zur Suche', 'btn btn-primary')}
             </div>
 
             <div class="dashboard-card">
               <h2>🚨 Notfallzugriff</h2>
               <p>Auf Patientendaten im Notfall zugreifen</p>
-              <a href="/emergency-access" class="btn btn-primary">Zugriff anfordern</a>
+              ${link('/emergency-access', 'Zugriff anfordern', 'btn btn-primary')}
             </div>
           ` : ''}
 
@@ -35,13 +32,13 @@ export const createDashboardPage = {
             <div class="dashboard-card">
               <h2>📋 Meine Daten</h2>
               <p>Persönliche Notfalldaten verwalten</p>
-              <a href="/profile" class="btn btn-primary">Zu Profil</a>
+              ${link('/profile', 'Zu Profil', 'btn btn-primary')}
             </div>
 
             <div class="dashboard-card">
               <h2>👁️ Zugriff-Verlauf</h2>
               <p>Sehen Sie, wer auf Ihre Daten zugegriffen hat</p>
-              <a href="/audit" class="btn btn-primary">Audit-Trail ansehen</a>
+              ${link('/audit', 'Audit-Trail ansehen', 'btn btn-primary')}
             </div>
           ` : ''}
 
@@ -49,21 +46,42 @@ export const createDashboardPage = {
             <div class="dashboard-card">
               <h2>⚙️ Verwaltung</h2>
               <p>Benutzer und Systemverwaltung</p>
-              <a href="/admin" class="btn btn-primary">Admin-Panel</a>
+              ${link('/admin', 'Admin-Panel', 'btn btn-primary')}
             </div>
 
             <div class="dashboard-card">
               <h2>📊 Statistiken</h2>
               <p>Systemstatistiken und Berichte</p>
-              <a href="/stats" class="btn btn-primary">Statistiken</a>
+              ${link('/stats', 'Statistiken', 'btn btn-primary')}
             </div>
 
             <div class="dashboard-card">
               <h2>📋 Audit-Trail</h2>
               <p>Alle Systemzugriffe und Ereignisse</p>
-              <a href="/audit" class="btn btn-primary">Audit-Trail</a>
+              ${link('/audit', 'Audit-Trail', 'btn btn-primary')}
             </div>
           ` : ''}
+          <div class="dashboard-card">
+  <h2>🔍 Patientensuche</h2>
+  <input type="text" id="patient-search-id" placeholder="ID oder Name eingeben...">
+  <button id="search-btn" class="btn btn-primary">Suchen</button>
+  <div id="search-results"></div> </div>
+  
+<div class="dashboard-card">
+  <h2>👥 Patientenstatistik</h2>
+  <p>Registrierte Patienten: <span id="patient-count">0</span></p>
+  
+  <h3>🚨 Letzte 5 Zugriffe</h3>
+  <ul id="access-list">
+    <li>Lade Zugriffe...</li>
+  </ul>
+</div>
+
+<div class="dashboard-card">
+  <h2>🔍 Patientensuche</h2>
+  <input type="text" id="patient-search-id" placeholder="Patienten-ID eingeben...">
+  <button id="search-btn" class="btn btn-primary">Suchen</button>
+</div>
 
           <div class="dashboard-card info-card">
             <h3>ℹ️ Informationen</h3>
@@ -83,9 +101,46 @@ export const createDashboardPage = {
         </div>
       </div>
     `
-  },
+ },
+attachListeners(element) {
+     async function loadDashboardData(element) {
+  try {
+    const response = await fetch('/api/v1/dashboard/data', {
+      headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+    });
+    const data = await response.json();
 
-  attachListeners(element) {
+    // Patienten-Zahl aktualisieren
+    const patientCountEl = element.querySelector('#patient-count');
+    if (patientCountEl) patientCountEl.innerText = data.total_patients;
+
+    attachListeners(element)
+      {
+  checkSystemStatus(element);
+
+  const btn = element.querySelector('#search-btn');
+  btn.addEventListener('click', async () => {
+    const query = element.querySelector('#patient-search-id').value;
+
+    // Anfrage an dein Backend schicken
+    const response = await fetch(`/api/v1/patients/search?query=${query}`);
+    const results = await response.json();
+
+    // Die Ergebnisse anzeigen
+    displayResults(element, results);
+  });
+}
+    // Zugriffs-Liste aktualisieren
+    const listEl = element.querySelector('#access-list');
+    if (listEl) {
+      listEl.innerHTML = data.recent_access.map(acc => `
+        <li>${acc.patient_name} - ${new Date(acc.time).toLocaleString()}</li>
+      `).join('');
+    }
+  } catch (error) {
+    console.error("Fehler beim Laden der Dashboard-Daten:", error);
+  }
+}
     // Check system status
     checkSystemStatus(element)
   }
@@ -127,4 +182,21 @@ async function checkSystemStatus(element) {
     }
   }
 }
+function displayResults(element, patients) {
+  const container = element.querySelector('#search-results');
 
+  if (patients.length === 0) {
+    container.innerHTML = "<p>Kein Patient gefunden.</p>";
+    return;
+  }
+
+  container.innerHTML = patients.map(p => `
+    <div class="result-card">
+      <h4>${p.first_name} ${p.last_name}</h4>
+      <p><strong>Allergien:</strong> ${p.allergies}</p>
+      <p><strong>Medikamente:</strong> ${p.medications}</p>
+      <p><strong>Vorerkrankungen:</strong> ${p.conditions}</p>
+      <a href="tel:${p.emergency_contact_phone}" class="btn btn-danger">Notfallkontakt anrufen</a>
+    </div>
+  `).join('');
+}

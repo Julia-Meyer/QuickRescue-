@@ -5,6 +5,7 @@
 
 import { isAuthenticated } from '../services/auth.js'
 
+
 // Lazy import routes
 let loginPage, dashboardPage, searchPage, emergencyAccessPage, auditPage, notFoundPage
 
