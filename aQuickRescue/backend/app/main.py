@@ -14,7 +14,11 @@ from dotenv import load_dotenv
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./aQuickRescue.db")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "aQuickRescue.db")
+
+# Die Datenbank immer an diesem festen Ort erstellen/suchen
+DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{DB_PATH}")
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False}, echo=True) if "sqlite" in DATABASE_URL else create_engine(DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
@@ -108,7 +112,7 @@ class UserLogin(BaseModel):
 from passlib.context import CryptContext
 from jose import JWTError, jwt
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 security = HTTPBearer()
@@ -153,8 +157,19 @@ class AuditService:
             except:
                 pass
 app = FastAPI(title="aQuickRescue API", description="Emergency Health Data Access API", version="0.1.0")
-app.add_middleware(CORSMiddleware, allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
-                  allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://localhost:5173",
+        "http://localhost:5173",
+        "https://127.0.0.1:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
@@ -189,6 +204,7 @@ def login(request: UserLogin, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Login error: {e}")
         raise HTTPException(status_code=500, detail="Login failed")
+
 @app.on_event("startup")
 async def startup_event():
     logger.info("=" * 60)
@@ -198,10 +214,28 @@ async def startup_event():
     try:
         db = SessionLocal()
         db.execute(text("SELECT 1"))
-        db.close()
         logger.info("✓ Database connection successful")
+
+        # --- TEST-USER AUTOMATISCH ANLEGEN ---
+        # Prüfen, ob admin1 bereits existiert
+        admin_exists = db.query(User).filter(User.username == "admin1").first()
+        if not admin_exists:
+            logger.info("ℹ No admin user found. Creating initial 'admin1' account...")
+            test_admin = User(
+                username="admin1",
+                email="admin@aquickrescue.de",
+                role="admin",
+                hashed_password=hash_password("123456"),  # Dein Testpasswort
+                is_active=True
+            )
+            db.add(test_admin)
+            db.commit()
+            logger.info("✓ Initial admin user 'admin1' created successfully (Password: 123456)")
+        # --------------------------------------
+
+        db.close()
     except Exception as e:
-        logger.error(f"✗ Database connection failed: {e}")
+        logger.error(f"✗ Database startup configuration failed: {e}")
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
