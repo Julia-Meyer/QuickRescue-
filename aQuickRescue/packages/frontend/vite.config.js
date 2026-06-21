@@ -34,4 +34,3 @@ export default defineConfig({
     'process.env.VITE_DB_NAME': JSON.stringify(process.env.VITE_DB_NAME || 'aQuickRescue')
   }
 })
-

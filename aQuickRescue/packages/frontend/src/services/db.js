@@ -3,7 +3,10 @@
  * Local metadata and image storage
  */
 
+// Load sql.js and ensure the WASM is fetched as a binary URL by the bundler (Vite)
 import initSqlJs from 'sql.js'
+// Vite understands the `?url` suffix and will provide a URL for the wasm file so fetch returns the real wasm
+import sqlWasmUrl from 'sql.js/dist/sql-wasm-browser.wasm?url'
 
 let db = null
 let SQL = null
@@ -90,7 +93,9 @@ const SCHEMA = {
  */
 export async function initializeDatabase() {
   try {
-    SQL = await initSqlJs()
+    // Provide locateFile so the sql.js loader fetches the correct wasm binary URL instead of falling back
+    // to an HTML page (which causes the "expected magic word ... found 3c 21 44 4f" error).
+    SQL = await initSqlJs({ locateFile: () => sqlWasmUrl })
 
     // Try to load existing database from IndexedDB
     const existing = await loadFromIndexedDB()
@@ -131,7 +136,7 @@ function initializeSchema() {
       db.run(sql)
     })
 
-    console.log('[DB] ✓ Schema initialized')
+    console.log('[DB] âœ“ Schema initialized')
   } catch (error) {
     console.error('[DB] Schema initialization failed:', error)
     throw error
@@ -337,9 +342,15 @@ export function getCachedResponse(endpoint) {
     [endpoint]
   )
 
-  if (result.length > 0) {
-    return JSON.parse(result[0].response_data)
+  if (result.length > 0 && result[0].response_data) {
+    try {
+        return JSON.parse(result[0].response_data)
+    } catch (e) {
+        console.error("Failed to parse cache entry", e)
+        return null
+    }
   }
+
   return null
 }
 
@@ -360,14 +371,27 @@ async function saveToIndexedDB() {
       const data = db.export()
       const blob = new Blob([data], { type: 'application/octet-stream' })
 
+      // Open version 1
       const request = indexedDB.open('aQuickRescue', 1)
 
+      // This ensures the store is created if it somehow doesn't exist
       request.onupgradeneeded = () => {
-        request.result.createObjectStore('database')
+        const database = request.result
+        if (!database.objectStoreNames.contains('database')) {
+          database.createObjectStore('database')
+        }
       }
 
       request.onsuccess = () => {
         const database = request.result
+
+        // Double check safeguard to prevent the exact crash you saw
+        if (!database.objectStoreNames.contains('database')) {
+          database.close()
+          reject(new Error("Object store 'database' missing after initialization. Please clear browser storage."))
+          return
+        }
+
         const transaction = database.transaction(['database'], 'readwrite')
         const store = transaction.objectStore('database')
         store.put(blob, 'sqlite_db')
@@ -393,10 +417,26 @@ async function loadFromIndexedDB() {
     try {
       const request = indexedDB.open('aQuickRescue', 1)
 
+      // CRUCIAL: Added setup logic here too for fresh app launches!
+      request.onupgradeneeded = () => {
+        const database = request.result
+        if (!database.objectStoreNames.contains('database')) {
+          database.createObjectStore('database')
+        }
+      }
+
       request.onerror = () => resolve(null)
 
       request.onsuccess = () => {
         const database = request.result
+
+        // If the store is missing, resolve with null so a fresh DB can build
+        if (!database.objectStoreNames.contains('database')) {
+          database.close()
+          resolve(null)
+          return
+        }
+
         const transaction = database.transaction(['database'], 'readonly')
         const store = transaction.objectStore('database')
         const getRequest = store.get('sqlite_db')
@@ -412,6 +452,11 @@ async function loadFromIndexedDB() {
           } else {
             resolve(null)
           }
+        }
+
+        transaction.onerror = () => {
+          database.close()
+          resolve(null)
         }
       }
     } catch (error) {
@@ -440,3 +485,11 @@ export async function clearDatabase() {
   await saveToIndexedDB()
 }
 
+/**
+ * Utility to convert an SQLite BLOB (Uint8Array) into a usable Browser Image URL
+ */
+export function convertBlobToUrl(blobData, mimeType = 'image/jpeg') {
+  if (!blobData) return null
+  const blob = new Blob([blobData], { type: mimeType })
+  return URL.createObjectURL(blob)
+}

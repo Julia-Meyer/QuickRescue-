@@ -22,38 +22,56 @@ export function initializeApp() {
   // Initial render
   render()
 
-  function render() {
-    const currentRoute = router.getCurrentRoute()
-    const isAuthenticated = store.getState().isAuthenticated
+  // 1. Turned this into an ASYNC function so we can await the router resolution
+  async function render() {
+    try {
+      // 2. Await the lazy-loaded route object cleanly
+      const currentRoute = await router.getCurrentRoute()
+      const isAuthenticated = store.getState().isAuthenticated
 
-    root.innerHTML = `
-      <div class="app-container">
-        ${createHeader()}
-        <main class="app-main">
-          ${currentRoute.render()}
-        </main>
-        ${createFooter()}
-      </div>
-    `
+      // Safety check: ensure render exists before execution
+      if (!currentRoute || typeof currentRoute.render !== 'function') {
+        throw new Error(`The matched route does not have a valid render function.`);
+      }
 
-    // Attach event listeners after rendering
-    attachEventListeners(root, currentRoute)
+      root.innerHTML = `
+        <div class="app-container">
+          ${createHeader()}
+          <main class="app-main">
+            ${currentRoute.render()}
+          </main>
+          ${createFooter()}
+        </div>
+      `
+
+      // Attach event listeners after rendering
+      attachEventListeners(root, currentRoute)
+
+    } catch (error) {
+      console.error('[App Bootstrap Render Error]', error)
+      root.innerHTML = `
+        <div style="padding: 2rem; text-align: center; color: #dc2626;">
+          <h1>Application Render Error</h1>
+          <p>${error.message}</p>
+        </div>
+      `
+    }
   }
 
   function attachEventListeners(element, route) {
     // Header navigation
     const navLinks = element.querySelectorAll('[data-nav-link]')
     navLinks.forEach(link => {
-      link.addEventListener('click', (e) => {
+      link.addEventListener('click', async (e) => { // Made async to support render loop smoothly
         e.preventDefault()
         const path = link.getAttribute('href')
         router.navigate(path)
-        render()
+        await render()
       })
     })
 
     // Route-specific event handlers
-    if (route.attachListeners) {
+    if (route && route.attachListeners) {
       route.attachListeners(element)
     }
   }
@@ -72,4 +90,3 @@ window.addEventListener('error', (event) => {
 window.addEventListener('unhandledrejection', (event) => {
   console.error('[Unhandled Promise]', event.reason)
 })
-

@@ -14,6 +14,19 @@ const BASE_PATH = '/'
  * Route definitions
  */
 const ROUTES = {
+  '/': {
+    path: '/',
+    title: 'Login - aQuickRescue',
+    requireAuth: false,
+    requiredRoles: [],
+    load: async () => {
+      if (!loginPage) {
+        const { createLoginPage } = await import('../pages/LoginPage.js')
+        loginPage = createLoginPage
+      }
+      return loginPage
+    }
+  },
   '/login': {
     path: '/login',
     title: 'Login - aQuickRescue',
@@ -146,16 +159,17 @@ class Router {
   async getCurrentRoute() {
     let route = ROUTES[this.currentPath]
 
+    // 1. Handle 404 falling back gracefully
     if (!route) {
-      // 404 route
       if (!notFoundPage) {
-        const { createNotFoundPage } = await import('../pages/NotFoundPage.js')
-        notFoundPage = createNotFoundPage
+        const module = await import('../pages/NotFoundPage.js')
+        // Check if it's named 'createNotFoundPage' or a default export
+        notFoundPage = module.createNotFoundPage || module.default
       }
       return {
         path: '/404',
-        render: notFoundPage,
-        attachListeners: null
+        render: notFoundPage === 'function' ? notFoundPage : notFoundPage.render,
+        attachListeners: notFoundPage.attachListeners || null
       }
     }
 
@@ -164,11 +178,32 @@ class Router {
       route = ROUTES['/login']
     }
 
-    const pageComponent = await route.load()
+    // 2. Load the component module safely
+    const component = await route.load()
+
+    // 3. Fallback extraction logic
+    // If 'component' is a function, we execute it. If it's an object, we use its render method.
+    let renderFn = null
+    let attachListenersFn = null
+
+    if (component && typeof component === 'object') {
+      renderFn = component.render
+      attachListenersFn = component.attachListeners
+    } else if (typeof component === 'function') {
+      // If the component itself is a factory function, execute it to see if it returns an object
+      const initialized = component()
+      renderFn = typeof initialized === 'function' ? initialized : initialized.render
+      attachListenersFn = initialized.attachListeners
+    }
+
+    if (typeof renderFn !== 'function') {
+      throw new Error(`[Router] Route "${route.path}" resolved to a component missing a valid render method.`)
+    }
+
     return {
       path: route.path,
-      render: pageComponent.render,
-      attachListeners: pageComponent.attachListeners || null,
+      render: renderFn,
+      attachListeners: attachListenersFn || null,
       title: route.title
     }
   }
@@ -207,7 +242,7 @@ export const router = new Router()
  * Setup router initialization
  */
 export function setupRouter() {
-  console.log('[Router] ✓ Router initialized')
+  console.log('[Router] âœ“ Router initialized')
 }
 
 /**
@@ -216,4 +251,3 @@ export function setupRouter() {
 export function link(path, text, className = '') {
   return `<a href="${path}" data-link data-nav-link class="nav-link ${className}">${text}</a>`
 }
-
