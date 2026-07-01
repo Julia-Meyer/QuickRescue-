@@ -274,6 +274,28 @@ class FHIRClient:
             json_data=resource
         )
 
+    async def delete_resource(
+            self,
+            resource_type: str,
+            resource_id: str
+    ) -> Dict[str, Any]:
+        """
+        Delete FHIR resource (Required for administrative compliance and data lifecycle management)
+
+        Args:
+            resource_type: FHIR resource type (e.g., Patient)
+            resource_id: Resource ID to be deleted
+
+        Returns:
+            Response acknowledgment dictionary
+        """
+        logger.info(f"FHIR delete: {resource_type}/{resource_id}")
+        return await self._make_request(
+            "DELETE",
+            f"{resource_type}/{resource_id}"
+        )
+
+
     def _generate_cache_key(
         self,
         resource_type: str,
@@ -297,4 +319,3 @@ def get_fhir_client() -> FHIRClient:
     if _fhir_client is None:
         _fhir_client = FHIRClient()
     return _fhir_client
-

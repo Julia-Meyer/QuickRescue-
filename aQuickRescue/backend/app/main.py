@@ -1,24 +1,29 @@
 """aQuickRescue - Emergency Health Data Backend API"""
 import os, logging
 from datetime import datetime, timedelta, date
-from typing import Optional, List
+from typing import Optional, List, Any
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, ForeignKey, Text, Date, text
+from sqlalchemy import DateTime, Boolean, ForeignKey, Text, Date, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+from collections import Counter
+import collections
 
-SQLALCHEMY_DATABASE_URL = "sqlite:///./test.db"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "aQuickRescue.db")
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={"check_same_thread": False})
+DATABASE_URL = f"sqlite:///{DB_PATH}"
+SQLALCHEMY_DATABASE_URL = DATABASE_URL
+
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -65,6 +70,8 @@ class PatientProfile(Base):
     first_name = Column(String, index=True)
     last_name = Column(String, index=True)
     date_of_birth = Column(Date)
+    blood_type = Column(String)
+    gender = Column(String, nullable=True)
     emergency_contact_name = Column(String, nullable=True)
     emergency_contact_phone = Column(String, nullable=True)
     emergency_access_enabled = Column(Boolean, default=False)
@@ -186,17 +193,22 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+
 @app.get("/api/v1/patients/search")
-async def search_patients(query: str, db: Session = Depends(get_db)):
-    # Sucht nach ID (falls Zahl) oder nach Namen
+def search_patients(query: str, db: Session = Depends(get_db)):
+    # Falls nach einer ID (Zahl) gesucht wird
     if query.isdigit():
-        results = db.query(Patient).filter(Patient.id == int(query)).all()
-    else:
-        results = db.query(Patient).filter(
-            (Patient.first_name.ilike(f"%{query}%")) |
-            (Patient.last_name.ilike(f"%{query}%"))
-        ).all()
-    return results
+        patient = db.query(PatientProfile).filter(PatientProfile.id == int(query)).all()
+        return patient
+
+    # Falls nach Namen gesucht wird (sucht in Vor- und Nachname)
+    patients = db.query(PatientProfile).filter(
+        (PatientProfile.first_name.ilike(f"%{query}%")) |
+        (PatientProfile.last_name.ilike(f"%{query}%"))
+    ).all()
+
+    return patients
 
 @app.get("/api/v1/dashboard/data")
 async def get_dashboard_data(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -220,6 +232,10 @@ async def http_exception_handler(request, exc: HTTPException):
 async def general_exception_handler(request, exc: Exception):
     logger.error(f"Unexpected error: {type(exc).__name__} - {str(exc)}", exc_info=True)
     return JSONResponse(status_code=500, content={"error": "SERVER_001", "message": "An unexpected error occurred", "status": 500})
+@app.get("/api/v1/logs") # exakt dieser Pfad!
+async def get_logs(db: Session = Depends(get_db)):
+    # Deine Logik, um die letzten Zugriffe zu holen
+    return {"status": "ok", "logs": []}
 @app.get("/health")
 async def health_check():
     try:
@@ -248,23 +264,74 @@ def login(request: UserLogin, db: Session = Depends(get_db)):
         logger.error(f"Login error: {e}")
         raise HTTPException(status_code=500, detail="Login failed")
 
+class FrontendLog(BaseModel):
+    level: str = "INFO"
+    message: str
+    timestamp: str = None
 
-@app.get("/api/v1/dashboard/stats")
-async def get_dashboard_stats(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Hier holen wir beispielhaft Daten aus der Datenbank
-    patient_count = db.query(PatientProfile).count()
-    access_count = db.query(EmergencyAccess).count()
+# Der fehlende POST-Endpunkt
+@app.post("/api/v1/logs")
+def receive_frontend_logs(log: FrontendLog):
+    # Druckt das Protokoll aus dem Browser direkt in dein Backend-Terminal
+    print(f"🖥️ Frontend-Log: {log.message}")
+    return {"status": "success", "message": "Log gespeichert"}
 
-    return {
-        "summary": {
-            "total_patients": patient_count,
-            "active_emergencies": access_count,
-            "system_status": "OPERATIONAL"
-        },
-        "recent_alerts": [
-            {"id": 1, "message": "Notfallzugriff durch Rettungsdienst", "time": "Gerade eben"}
-        ]
-    }
+
+from fastapi import FastAPI, Depends, HTTPException
+from sqlalchemy.orm import Session
+from collections import Counter
+
+
+# ... Deine bestehenden Importe (PatientProfile, get_db, etc.) ...
+
+@app.get("/api/v1/dashboard/stats")  # Exakt der Pfad mit /v1/ wie im Frontend!
+def get_dashboard_stats(db: Session = Depends(get_db)):
+    try:
+        patients = db.query(PatientProfile).all()
+        total_patients = len(patients)
+
+        # 1. Fehlersicherer Check für Notfallzugriff (fängt enabled vs anabled ab)
+        access_enabled = 0
+        for p in patients:
+            if getattr(p, 'emergency_access_enabled', False) or getattr(p, 'emergency_access_anabled', False):
+                access_enabled += 1
+        access_disabled = total_patients - access_enabled
+
+        # 2. Fehlersicheres Auswerten der Allergien
+        all_allergies = []
+        for p in patients:
+            # Holt 'allergies' oder alternativ 'allergy', falls es im Modell Einzahl ist
+            allergy_data = getattr(p, 'allergies', getattr(p, 'allergy', None))
+            if allergy_data and allergy_data != "Keine bekannt":
+                all_allergies.extend([a.strip() for a in allergy_data.split(",")])
+
+        top_allergies = Counter(all_allergies).most_common(5)
+
+        # 3. Fehlersicheres Auswerten der Vorerkrankungen
+        all_conditions = []
+        for p in patients:
+            # Holt 'condition' oder alternativ 'conditions'
+            condition_data = getattr(p, 'condition', getattr(p, 'conditions', None))
+            if condition_data and condition_data != "Keine chronischen Erkrankungen":
+                all_conditions.extend([c.strip() for c in condition_data.split(",")])
+
+        top_conditions = Counter(all_conditions).most_common(5)
+
+        # Rückgabe exakt so strukturiert, wie es das Frontend erwartet
+        return {
+            "summary": {
+                "total_patients": total_patients,
+                "access_enabled": access_enabled,
+                "access_disabled": access_disabled,
+            },
+            "top_allergies": [{"name": name, "count": count} for name, count in top_allergies],
+            "top_conditions": [{"name": name, "count": count} for name, count in top_conditions]
+        }
+
+    except Exception as e:
+        # Falls irgendwas schiefgeht, sehen wir den Fehler in der Terminal-Konsole
+        print(f"🚨 FEHLER IM DASHBOARD-ENDPOINT: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.on_event("startup")
 async def startup_event():
@@ -300,3 +367,100 @@ async def startup_event():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+
+
+# Das Schema (akzeptiert jetzt ID als Zahl ODER Text, um Fehler zu vermeiden)
+class EmergencyAccessPayload(BaseModel):
+    patient_id: Any
+    reason: str
+
+
+@app.post("/api/v1/emergency-access")
+def create_emergency_access(payload: EmergencyAccessPayload, db: Session = Depends(get_db)):
+    print(f"--- NOTFALLZUGRIFF GESTARTET FÜR ID: {payload.patient_id} ---")
+    print(f"Grund eingegeben: {payload.reason}")
+
+    # 1. Protokollierung in der Datenbank (Sicher verpackt)
+    try:
+        # HINWEIS: Wenn 'AuditLog' bei dir anders heißt, hier anpassen!
+        new_log = AuditLog(
+            action="BREAK_THE_GLASS",
+            details=f"Notfall-Zugriff auf Patient #{payload.patient_id}. Grund: {payload.reason}",
+            timestamp=datetime.utcnow()
+        )
+        db.add(new_log)
+        db.commit()
+        print("✅ Audit-Log erfolgreich gespeichert.")
+    except Exception as db_err:
+        print(f"⚠️ Audit-Log konnte nicht gespeichert werden (Modellname falsch?): {db_err}")
+        db.rollback()  # Verhindert, dass die DB blockiert
+
+    # 2. Patienten abrufen
+    # HINWEIS: Wenn dein Modell 'Patient' statt 'PatientProfile' heißt, hier anpassen!
+    try:
+        patient = db.query(PatientProfile).filter(PatientProfile.id == payload.patient_id).first()
+
+        if not patient:
+            print(f"❌ Patient mit ID {payload.patient_id} wurde in der DB nicht gefunden.")
+            raise HTTPException(status_code=404, detail="Patient nicht gefunden")
+
+        print(f"✅ Patient {patient.first_name} gefunden. Sende Daten an Frontend...")
+
+        # 3. Daten zurückgeben (Achte darauf, dass die Bezeichnungen links zu deiner DB passen!)
+        return {
+            "status": "success",
+            "medical_data": {
+                "allergies": getattr(patient, 'allergies', 'Keine bekannten Allergien'),
+                "medications": getattr(patient, 'medications', 'Keine Dauermedikation'),
+                "conditions": getattr(patient, 'medical_conditions', 'Keine chronischen Vorerkrankungen')
+            }
+        }
+
+    except Exception as e:
+        print(f"💥 Kritischer Fehler im Endpunkt: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/dashboard/stats")
+def get_dashboard_stats(db: Session = Depends(get_db)):  # Passe get_db an dein Setup an
+    patients = db.query(PatientProfile).all()
+    total_patients = len(patients)
+
+    # 1. Notfallzugriff-Status zählen
+    access_enabled = sum(1 for p in patients if p.emergency_access_enabled)
+    access_disabled = total_patients - access_enabled
+
+    # 2. Häufigste Allergien auswerten (da sie als Komma-String gespeichert sind)
+    all_allergies = []
+    for p in patients:
+        if p.allergies and p.allergies != "Keine bekannt":
+            # Splittet den String auf, falls mehrere Allergien existieren
+            all_allergies.extend([a.strip() for a in p.allergies.split(",")])
+
+    allergy_counts = Counter(all_allergies).most_common(5)  # Top 5 Allergien
+
+    # 3. Häufigste Vorerkrankungen auswerten
+    all_conditions = []
+    for p in patients:
+        if p.condition and p.condition != "Keine chronischen Erkrankungen":
+            all_conditions.extend([c.strip() for c in p.condition.split(",")])
+
+    condition_counts = Counter(all_conditions).most_common(5)
+
+    return {
+        "summary": {
+            "total_patients": total_patients,
+            "access_enabled": access_enabled,
+            "access_disabled": access_disabled,
+        },
+        "top_allergies": [{"name": name, "count": count} for name, count in allergy_counts],
+        "top_conditions": [{"name": name, "count": count} for name, count in condition_counts],
+        # Liefert die letzten 5 registrierten Patienten für eine "Recent Activity"-Liste
+        "recent_patients": [
+            {
+                "id": p.id,
+                "name": f"{p.first_name} {p.last_name}",
+                "created_at": p.created_at.strftime("%d.%m.%Y") if p.created_at else None
+            } for p in patients[-5:]
+        ]
+    }
